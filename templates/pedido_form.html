@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Nuevo pedido' if modo == 'nuevo' else 'Editar pedido' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <!-- Header -->
+  <div class="mb-4">
+    <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill mb-2">
+      {{ 'NUEVO PEDIDO' if modo=='nuevo' else 'EDITAR PEDIDO' }}
+    </span>
+    <h2 class="fw-bold mb-0">{{ 'Registrar pedido' if modo=='nuevo' else 'Editar pedido' }}</h2>
+  </div>
+
+  <!-- Form Card -->
+  <div class="card border-0 shadow-sm rounded-4">
+    <div class="card-body p-4">
+      <form method="post">
+
+        <!-- Sección 1: Cliente y Empleado -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Cliente <span class="text-danger">*</span>
+            </label>
+            <input 
+              list="clientes" 
+              name="nombre_cliente" 
+              placeholder="Seleccione o escriba un cliente"
+              class="form-control form-control-lg rounded-3 shadow-sm"
+              value="{% if pedido %}{{ pedido.nombre_cliente }}{% endif %}"
+              required
+            >
+            <datalist id="clientes">
+              {% for c in clientes %}
+              <option value="{{ c.NombreCompleto }}" data-id="{{ c.id_cliente }}">
+              {% endfor %}
+            </datalist>
+            
+            <!-- Campo oculto para el ID (si existe en BD) -->
+            <input type="hidden" name="id_cliente" id="id_cliente_hidden" value="{% if pedido %}{{ pedido.id_cliente }}{% endif %}">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Empleado que registra <span class="text-danger">*</span>
+            </label>
+            <select name="id_empleado" class="form-select form-select-lg rounded-3 shadow-sm" required>
+              <option value="">Seleccione...</option>
+              {% for e in empleados %}
+              <option value="{{ e.id_empleado }}"
+                {% if pedido and pedido.idEmpleado == e.id_empleado %}selected{% endif %}>
+                {{ e.NombreCompleto }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- Sección 2: Estado, Tipo y Menú -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Estado del pedido <span class="text-danger">*</span>
+            </label>
+            <select id="estado-select" name="id_estado_pedido"
+                class="form-select form-select-lg rounded-3 shadow-sm"
+                required>
+              {% for e in estados %}
+              <option value="{{ e.id_estado_pedido }}"
+                  class="
+                      {% if e.descripcion == 'Pendiente' %}estado-pendiente
+                      {% elif e.descripcion == 'En preparación' %}estado-preparacion
+                      {% elif e.descripcion == 'En camino' %}estado-camino
+                      {% elif e.descripcion == 'Entregado' %}estado-entregado
+                      {% elif e.descripcion == 'Cancelado' %}estado-cancelado
+                      {% endif %}
+                  "
+                  {% if pedido and pedido.idEstado_pedido == e.id_estado_pedido %}
+                      selected
+                  {% endif %}
+              >
+                  {{ e.descripcion }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Tipo de pedido <span class="text-danger">*</span>
+            </label>
+            <select name="id_tipo_pedido" id="tipo_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
+              <option value="">Seleccione...</option>
+              {% for t in tipos %}
+              <option value="{{ t.id_tipo_pedido }}"
+                {% if pedido and pedido.id_tipo_pedido == t.id_tipo_pedido %}selected{% endif %}>
+                {{ t.descripcion }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+ 
+<!-- MODIFICAR EL SELECT DEL MENÚ EN pedido_form.html -->
+<div class="col-md-4">
+    <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+      Menú <span class="text-danger">*</span>
+    </label>
+    <select name="id_menu" class="form-select form-select-lg rounded-3 shadow-sm" required>
+      <option value="">Seleccione...</option>
+      {% for m in menus %}
+      <option value="{{ m.idMenu }}" 
+              data-precio="{{ m.Precio }}"
+              data-restaurante="{{ m.idRestaurante }}"
+              {% if pedido and pedido.idMenu == m.idMenu %}selected
+              {% elif menu_id_seleccionado and menu_id_seleccionado|string == m.idMenu|string %}selected
+              {% endif %}>
+        {{ m.Descripcion }} - ${{ "%.2f"|format(m.Precio) }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+
+        <!-- Sección 3: Restaurante y Costos -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Restaurante <span class="text-danger">*</span>
+            </label>
+            <select name="id_restaurante" class="form-select form-select-lg rounded-3 shadow-sm" required>
+              <option value="">Seleccione...</option>
+              {% for r in restaurantes %}
+              <option value="{{ r.idRestaurante }}"
+                {% if pedido and pedido.idRestaurante == r.idRestaurante %}selected{% endif %}>
+                {{ r.Nombre }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Costo de pedido <span class="text-danger">*</span>
+            </label>
+            <select name="id_costo_pedido" id="costo_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
+              <option value="">Seleccione...</option>
+              {% for c in costos_pedido %}
+              <option value="{{ c.id_costo_pedido }}" 
+                data-costo="{% if 'estándar' in c.descripcion|lower %}1.50{% elif 'premium' in c.descripcion|lower %}2.00{% elif 'empresarial' in c.descripcion|lower %}1.00{% elif 'combo' in c.descripcion|lower %}1.75{% elif 'especial' in c.descripcion|lower %}2.50{% else %}1.50{% endif %}"
+                {% if pedido and pedido.id_costo_pedido == c.id_costo_pedido %}selected{% endif %}>
+                {{ c.descripcion }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Costo de Entrega
+            </label>
+            <select name="id_costo_entrega" class="form-select form-select-lg rounded-3 shadow-sm">
+              <option value="">Seleccione...</option>
+              {% for ce in costos_entrega %}
+              <option value="{{ ce.id_costo_entrega }}"
+                {% if pedido and pedido.id_costo_entrega == ce.id_costo_entrega %}selected{% endif %}>
+                {{ ce.descripcion }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- Sección 4: Referencia, Método de pago y Repartidor -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Referencia (dirección)
+            </label>
+            <select name="id_referencia" class="form-select form-select-lg rounded-3 shadow-sm">
+              <option value="">(Opcional)</option>
+              {% for r in referencias %}
+              <option value="{{ r.idReferencia }}"
+                {% if pedido and pedido.idReferencia == r.idReferencia %}selected{% endif %}>
+                {{ r.descripcion }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Método de pago <span class="text-danger">*</span>
+            </label>
+            <select name="id_metodo_pago" class="form-select form-select-lg rounded-3 shadow-sm" required>
+              <option value="">Seleccione...</option>
+              {% for m in metodos_pago %}
+              <option value="{{ m.idMetodo_de_pago }}"
+                {% if pedido and pedido.idMetodo_de_pago == m.idMetodo_de_pago %}selected{% endif %}>
+                {{ m.descripcion }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Repartidor <span class="text-danger" id="repartidor_required">*</span>
+            </label>
+            <select name="id_repartidor" id="repartidor" class="form-select form-select-lg rounded-3 shadow-sm" required>
+              <option value="">Seleccione...</option>
+              {% for r in repartidores %}
+              <option value="{{ r.idRepartidor }}"
+                {% if pedido and pedido.idRepartidor == r.idRepartidor %}selected{% endif %}>
+                {{ r.NombreCompleto }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- Sección 5: Fechas -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Fecha del pedido <span class="text-danger">*</span>
+            </label>
+            <input type="date" name="fecha_pedido" class="form-control form-control-lg rounded-3 shadow-sm"
+                   value="{% if pedido and pedido.Fecha_pedido %}{{ pedido.Fecha_pedido[:10] }}{% endif %}" required>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Fecha de entrega <span class="text-danger">*</span>
+            </label>
+            <input type="date" name="fecha_entrega" class="form-control form-control-lg rounded-3 shadow-sm"
+                   value="{% if pedido and pedido.Fecha_entrega %}{{ pedido.Fecha_entrega[:10] }}{% endif %}" required>
+          </div>
+        </div>
+
+        <!-- Sección 6: Costos finales -->
+        <div class="row g-4 mb-4">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Total pedido (productos) <span class="text-danger">*</span>
+            </label>
+            <div class="input-group input-group-lg shadow-sm rounded-3">
+              <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+              <input type="number" step="0.01" name="total_pedido" id="total_pedido" class="form-control border-0 rounded-end-3"
+                     value="{% if pedido and pedido.Total_pedido %}{{ pedido.Total_pedido }}{% endif %}" placeholder="0.00" required>
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Costo servicio <span class="text-danger" id="costo_servicio_required">*</span>
+            </label>
+            <div class="input-group input-group-lg shadow-sm rounded-3">
+              <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+              <input type="number" step="0.01" name="costo_servicio" id="costo_servicio" class="form-control border-0 rounded-end-3"
+                     value="{% if pedido and pedido.Costo_servicio %}{{ pedido.Costo_servicio }}{% endif %}" placeholder="0.00" required>
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              Total a pagar <span class="text-danger">*</span>
+            </label>
+            <div class="input-group input-group-lg shadow-sm rounded-3">
+              <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+              <input type="number" step="0.01" name="total_pagar" id="total_pagar" class="form-control border-0 rounded-end-3"
+                     value="{% if pedido and pedido.Total_pagar %}{{ pedido.Total_pagar }}{% endif %}" placeholder="0.00" required readonly>
+            </div>
+            <small class="text-muted">Se calcula automáticamente</small>
+          </div>
+        </div>
+
+        <!-- Botones -->
+        <div class="d-flex gap-3 pt-4 border-top">
+          <button type="submit" class="btn btn-primary btn-lg px-5 rounded-pill shadow-sm">
+            💾 Guardar
+          </button>
+          <a href="{{ url_for('pedidos_list') }}" class="btn btn-outline-secondary btn-lg px-5 rounded-pill">
+            Cancelar
+          </a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Estilos personalizados para el formulario */
+.form-select,
+.form-control {
+  border: 1px solid #e0e0e0;
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+
+.form-select:focus,
+.form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15) !important;
+}
+
+.input-group-text {
+  font-weight: 600;
+  color: #6c757d;
+}
+
+.btn {
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15) !important;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+  border: none;
+}
+
+.card {
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .col-md-4, .col-md-6 {
+    margin-bottom: 1rem;
+  }
+}
+</style>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const menuSelect = document.querySelector('select[name="id_menu"]');
+  const restauranteSelect = document.querySelector('select[name="id_restaurante"]');
+  const totalPedidoInput = document.getElementById('total_pedido');
+  const costoPedidoSelect = document.getElementById('costo_pedido');
+  const costoServicioInput = document.getElementById('costo_servicio');
+  const costoServicioRequired = document.getElementById('costo_servicio_required');
+  const totalPagarInput = document.getElementById('total_pagar');
+  const tipoPedidoSelect = document.getElementById('tipo_pedido');
+  const costoEntregaSelect = document.querySelector('select[name="id_costo_entrega"]');
+  const repartidorSelect = document.getElementById('repartidor');
+  const repartidorRequired = document.getElementById('repartidor_required');
+
+  // Función para calcular el total a pagar
+  function calcularTotal() {
+    const totalPedido = parseFloat(totalPedidoInput.value) || 0;
+    const costoServicio = parseFloat(costoServicioInput.value) || 0;
+    
+    let costoEntrega = 0;
+    if (costoEntregaSelect && 
+        costoEntregaSelect.closest('.col-md-4').style.display !== 'none' && 
+        costoEntregaSelect.selectedIndex > 0) {
+      const textoEntrega = costoEntregaSelect.options[costoEntregaSelect.selectedIndex].text;
+      const match = textoEntrega.match(/\$?\s*(\d+\.?\d*)/);
+      if (match) {
+        costoEntrega = parseFloat(match[1]);
+      }
+    }
+    
+    const total = totalPedido + costoServicio + costoEntrega;
+    totalPagarInput.value = total.toFixed(2);
+  }
+
+  // Función para verificar campos según tipo de pedido
+  function verificarCamposSegunTipo() {
+    if (!tipoPedidoSelect.value) return;
+    
+    const tipoPedidoTexto = tipoPedidoSelect.options[tipoPedidoSelect.selectedIndex].text.toLowerCase();
+    const costoEntregaContainer = costoEntregaSelect.closest('.col-md-4');
+    const repartidorContainer = repartidorSelect ? repartidorSelect.closest('.col-md-4') : null;
+    
+    if (tipoPedidoTexto.includes('local')) {
+      if (costoEntregaContainer) {
+        costoEntregaContainer.style.display = 'none';
+        costoEntregaSelect.removeAttribute('required');
+        costoEntregaSelect.value = '';
+      }
+      
+      if (repartidorContainer) {
+        repartidorContainer.style.display = 'none';
+        repartidorSelect.removeAttribute('required');
+        repartidorRequired.style.display = 'none';
+        repartidorSelect.value = '';
+      }
+      
+      costoServicioInput.removeAttribute('required');
+      costoServicioRequired.style.display = 'none';
+      costoServicioInput.value = '0.00';
+      
+    } else {
+      if (costoEntregaContainer) {
+        costoEntregaContainer.style.display = 'block';
+        costoEntregaSelect.setAttribute('required', 'required');
+      }
+      
+      if (repartidorContainer) {
+        repartidorContainer.style.display = 'block';
+        repartidorSelect.setAttribute('required', 'required');
+        repartidorRequired.style.display = 'inline';
+      }
+      
+      costoServicioInput.setAttribute('required', 'required');
+      costoServicioRequired.style.display = 'inline';
+      
+      if (!costoEntregaSelect.value || costoEntregaSelect.value === "") {
+        for (let i = 1; i < costoEntregaSelect.options.length; i++) {
+          costoEntregaSelect.selectedIndex = i;
+          break;
+        }
+      }
+      
+      const descripcionEntrega = costoEntregaSelect.options[costoEntregaSelect.selectedIndex].text;
+      const match = descripcionEntrega.match(/\$?\s*(\d+\.?\d*)/);
+      if (match) {
+        const precioEntrega = parseFloat(match[1]);
+        if (precioEntrega > 0) {
+          costoServicioInput.value = precioEntrega.toFixed(2);
+          costoServicioInput.style.backgroundColor = '#d4edda';
+          setTimeout(() => {
+            costoServicioInput.style.backgroundColor = '';
+          }, 500);
+        }
+      }
+    }
+    
+    calcularTotal();
+  }
+
+  // 🔥 EVENTO: Cuando se selecciona un menú
+  if (menuSelect) {
+    menuSelect.addEventListener('change', function() {
+      const selectedOption = this.options[this.selectedIndex];
+      const precio = selectedOption.getAttribute('data-precio');
+      const idRestaurante = selectedOption.getAttribute('data-restaurante');
+      
+      // 1️⃣ Autocompletar PRECIO
+      if (precio) {
+        totalPedidoInput.value = parseFloat(precio).toFixed(2);
+        totalPedidoInput.style.backgroundColor = '#d4edda';
+        setTimeout(() => {
+          totalPedidoInput.style.backgroundColor = '';
+        }, 500);
+      }
+      
+      // 2️⃣ Autocompletar RESTAURANTE
+      if (idRestaurante && restauranteSelect) {
+        restauranteSelect.value = idRestaurante;
+        restauranteSelect.style.backgroundColor = '#fff3cd';
+        setTimeout(() => {
+          restauranteSelect.style.backgroundColor = '';
+        }, 500);
+      }
+      
+      calcularTotal();
+    });
+  }
+
+  // Cuando se cambia el costo de entrega
+  if (costoEntregaSelect) {
+    costoEntregaSelect.addEventListener('change', function() {
+      const tipoPedidoTexto = tipoPedidoSelect.options[tipoPedidoSelect.selectedIndex].text.toLowerCase();
+      
+      if (!tipoPedidoTexto.includes('local')) {
+        const descripcionEntrega = this.options[this.selectedIndex].text;
+        const match = descripcionEntrega.match(/\$?\s*(\d+\.?\d*)/);
+        
+        if (match) {
+          const precioEntrega = parseFloat(match[1]);
+          costoServicioInput.value = precioEntrega.toFixed(2);
+          costoServicioInput.style.backgroundColor = '#d4edda';
+          setTimeout(() => {
+            costoServicioInput.style.backgroundColor = '';
+          }, 500);
+          calcularTotal();
+        }
+      }
+    });
+  }
+
+  // Event listeners
+  totalPedidoInput.addEventListener('input', calcularTotal);
+  costoServicioInput.addEventListener('input', calcularTotal);
+  tipoPedidoSelect.addEventListener('change', verificarCamposSegunTipo);
+
+  // Actualizar color del estado
+  function actualizarColorEstado() {
+    const select = document.getElementById("estado-select");
+    if (!select) return;
+    
+    select.classList.remove(
+      "select-estado-pendiente",
+      "select-estado-preparacion",
+      "select-estado-camino",
+      "select-estado-entregado",
+      "select-estado-cancelado"
+    );
+
+    const opcion = select.options[select.selectedIndex].className.trim();
+    if (opcion !== "") {
+      select.classList.add("select-" + opcion);
+    }
+  }
+
+  const estadoSelect = document.getElementById("estado-select");
+  if (estadoSelect) {
+    estadoSelect.addEventListener("change", actualizarColorEstado);
+    actualizarColorEstado();
+  }
+
+  // Autocompletar cliente
+  document.querySelector('input[name="nombre_cliente"]').addEventListener('input', function(e) {
+    let valor = e.target.value;
+    let opciones = document.querySelectorAll('#clientes option');
+    
+    opciones.forEach(function(option) {
+      if (option.value === valor) {
+        document.getElementById('id_cliente_hidden').value = option.getAttribute('data-id');
+      }
+    });
+  });
+
+  // ✅ INICIALIZAR AL CARGAR
+  calcularTotal();
+  verificarCamposSegunTipo();
+  
+  // 🔥 SI HAY MENÚ PRESELECCIONADO, AUTOCOMPLETAR TODO
+  if (menuSelect && menuSelect.value) {
+    // Pequeño delay para asegurar que todos los elementos estén listos
+    setTimeout(() => {
+      menuSelect.dispatchEvent(new Event('change'));
+    }, 100);
+  }
+});
+</script>
+
+
+{% endblock %}

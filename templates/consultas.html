@@ -1,0 +1,19 @@
+<h2>Consultas Avanzadas</h2>
+
+<a href="/consulta1">Consulta: Historial de pedidos por cliente</a>
+
+{% if datos %}
+<h3>Resultados</h3>
+<table border="1">
+    <tr>
+        <th>Cliente</th><th>Apellido</th><th>Menú</th><th>Restaurante</th><th>Método</th><th>Monto</th><th>Fecha</th>
+    </tr>
+    {% for d in datos %}
+    <tr>
+        {% for col in d %}
+        <td>{{ col }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}

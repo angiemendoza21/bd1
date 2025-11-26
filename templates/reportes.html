@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Reportes{% endblock %}
+
+{% block content %}
+
+<h1 class="report-title">Consultas avanzadas</h1>
+<p class="report-sub">Análisis de pagos, métodos y clientes según nuestro modelo de negocio.</p>
+
+<div class="report-container">
+
+    <!-- COLUMNA IZQUIERDA -->
+    <div>
+
+        <div class="report-block">
+            <h3>Pedidos facturados en 2024</h3>
+            <ul>
+                {% for p in pedidos_2024 %}
+                <li>
+                    Pedido {{ p.id_pedido }} — 
+                    {{ p.Cliente }} — 
+                    <strong>${{ p.Monto }}</strong>
+                    <span>({{ p.Fecha_de_pago }})</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="report-block">
+            <h3>Pedido con monto más alto</h3>
+            {% for pm in pedido_mas_caro %}
+                <p><strong>Pedido {{ pm.id_pedido }}</strong> — ${{ pm.Costo }}</p>
+                <p>Producto: {{ pm.ProductoComprado }}</p>
+                <p>Fecha de pago: {{ pm.Fecha_de_pago }}</p>
+            {% endfor %}
+        </div>
+
+    </div>
+
+    <!-- COLUMNA DERECHA -->
+    <div>
+
+        <div class="report-block">
+            <h3>Métodos de pago más usados</h3>
+            <ul>
+                {% for m in metodos_mas_usados %}
+                <li>{{ m.MetodoDePago }} — <strong>{{ m.TotalUsos }} usos</strong></li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="report-block">
+            <h3>Clientes que más han gastado</h3>
+            <ol>
+                {% for c in clientes_top %}
+                <li>{{ c.Nombre }} {{ c.Apellido }} — <strong>${{ c.TotalGastado }}</strong></li>
+                {% endfor %}
+            </ol>
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

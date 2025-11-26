@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Pedidos{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <!-- Header Section -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill mb-2">PEDIDOS</span>
+      <h2 class="fw-bold mb-0">Listado de pedidos</h2>
+    </div>
+    <a href="{{ url_for('pedido_nuevo') }}" class="btn btn-primary rounded-pill px-4 shadow-sm">
+      <i class="bi bi-plus-circle me-2"></i>Nuevo pedido
+    </a>
+  </div>
+
+  <!-- Table Card -->
+  <div class="card border-0 shadow-sm rounded-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="bg-light">
+            <tr>
+              <th class="px-4 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">ID</th>
+              <th class="px-3 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">CLIENTE</th>
+              <th class="px-3 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">TIPO</th>
+              <th class="px-3 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">ESTADO</th>
+              <th class="px-3 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">RESTAURANTE</th>
+              <th class="px-3 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">MENÚ</th>
+              <th class="px-3 py-3 text-muted fw-semibold" style="font-size: 0.85rem;">FECHA</th>
+              <th class="px-3 py-3 text-muted fw-semibold text-end" style="font-size: 0.85rem;">TOTAL PAGAR</th>
+              <th class="px-4 py-3 text-muted fw-semibold text-center" style="font-size: 0.85rem;">OPCIONES</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in pedidos %}
+            <tr class="border-bottom">
+              <td class="px-4 py-3 fw-semibold">{{ p.id_pedido }}</td>
+              <td class="px-3 py-3">{{ p.Cliente }}</td>
+              <td class="px-3 py-3">{{ p.TipoPedido }}</td>
+              <td class="px-3 py-3">
+                <form action="{{ url_for('pedido_cambiar_estado') }}" method="post" style="display: inline;">
+                  <input type="hidden" name="id_pedido" value="{{ p.id_pedido }}">
+                  
+                  <select name="id_estado_pedido" 
+                          class="estado-select-tabla select-estado-{{ p.Estado|lower|replace(' ', '-') }}"
+                          onchange="this.form.submit()"
+                          style="min-width: 150px;">
+                    
+                    <option value="1" 
+                            class="estado-pendiente"
+                            {% if p.Estado == 'Pendiente' %}selected{% endif %}>
+                      Pendiente
+                    </option>
+                    
+                    <option value="2" 
+                            class="estado-en-preparación"
+                            {% if p.Estado == 'En preparación' %}selected{% endif %}>
+                      En preparación
+                    </option>
+                    
+                    <option value="3" 
+                            class="estado-en-camino"
+                            {% if p.Estado == 'En camino' %}selected{% endif %}>
+                      En camino
+                    </option>
+                    
+                    <option value="4" 
+                            class="estado-entregado"
+                            {% if p.Estado == 'Entregado' %}selected{% endif %}>
+                      Entregado
+                    </option>
+                    
+                    <option value="5" 
+                            class="estado-cancelado"
+                            {% if p.Estado == 'Cancelado' %}selected{% endif %}>
+                      Cancelado
+                    </option>
+                  </select>
+                </form>
+              </td>
+              <td class="px-3 py-3">{{ p.Restaurante }}</td>
+              <td class="px-3 py-3">{{ p.Menu }}</td>
+              <td class="px-3 py-3">{{ p.Fecha_pedido if p.Fecha_pedido else '' }}</td>
+              <td class="px-3 py-3 text-end fw-semibold">${{ "%.2f"|format(p.Total_pagar) }}</td>
+              <td class="px-3 py-3">
+                <div class="d-flex justify-content-center align-items-center gap-2" style="min-width: 280px;">
+                  <a href="{{ url_for('factura_pdf', id_pedido=p.id_pedido) }}" 
+                     class="btn btn-sm btn-outline-secondary rounded-pill d-flex align-items-center justify-content-center"
+                     style="min-width: 70px; height: 32px; font-size: 0.8rem;">
+                    📄 PDF
+                  </a>
+                  <a href="{{ url_for('pedido_editar', id_pedido=p.id_pedido) }}" 
+                     class="btn btn-sm btn-outline-primary rounded-pill d-flex align-items-center justify-content-center"
+                     style="min-width: 70px; height: 32px; font-size: 0.8rem;">
+                    Editar
+                  </a>
+                  <form method="post" 
+                        action="{{ url_for('pedido_eliminar', id_pedido=p.id_pedido) }}" 
+                        style="display: inline-block; margin: 0;"
+                        onsubmit="return confirm('¿Está seguro de eliminar este pedido?');">
+                    <button type="submit" 
+                            class="btn btn-sm btn-outline-danger rounded-pill d-flex align-items-center justify-content-center"
+                            style="min-width: 80px; height: 32px; font-size: 0.8rem;">
+                      Eliminar
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="9" class="text-center py-5 text-muted">
+                <div class="py-4">
+                  <i class="bi bi-inbox" style="font-size: 3rem; opacity: 0.3;"></i>
+                  <p class="mt-3 mb-0">No hay pedidos registrados.</p>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Estilos adicionales para mejorar la tabla */
+.table tbody tr {
+  transition: all 0.2s ease;
+}
+
+.table tbody tr:hover {
+  background-color: #f8f9fa;
+  transform: scale(1.001);
+}
+
+.card {
+  overflow: hidden;
+}
+
+.btn {
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.table thead th {
+  border-bottom: 2px solid #dee2e6;
+  letter-spacing: 0.5px;
+}
+
+.table tbody tr:last-child {
+  border-bottom: none !important;
+}
+</style>
+{% endblock %}

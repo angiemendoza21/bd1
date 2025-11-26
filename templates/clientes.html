@@ -1,0 +1,25 @@
+<h2>Clientes</h2>
+
+<form action="/agregar_cliente" method="POST">
+    Nombre: <input name="nombre"><br>
+    Apellido: <input name="apellido"><br>
+    Cédula: <input name="cedula"><br>
+    Teléfono: <input name="telefono"><br>
+    <button type="submit">Agregar</button>
+</form>
+
+<h3>Lista de clientes</h3>
+<table border="1">
+    <tr>
+        <th>ID</th><th>Nombre</th><th>Apellido</th><th>Cédula</th><th>Teléfono</th>
+    </tr>
+    {% for c in clientes %}
+    <tr>
+        <td>{{ c[0] }}</td>
+        <td>{{ c[1] }}</td>
+        <td>{{ c[2] }}</td>
+        <td>{{ c[3] }}</td>
+        <td>{{ c[4] }}</td>
+    </tr>
+    {% endfor %}
+</table>

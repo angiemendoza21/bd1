@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- CONTENEDOR GENERAL -->
+<div class="dashboard-container">
+
+    <!-- ------------------- IZQUIERDA ------------------- -->
+    <div class="dash-left">
+
+        <span class="subtitulo">SISTEMA DE PEDIDOS</span>
+        <h1 class="titulo">Gestión de pedidos para llevar y a domicilio</h1>
+        <p class="desc">
+            Administra los pedidos de clientes, su estado, tipo de entrega y pagos,
+            con un flujo claro y agradable.
+        </p>
+
+        <!-- ACCIONES -->
+        <div class="card-soft mt-3">
+            <h5 class="mb-3">Acciones rápidas</h5>
+            <div class="d-grid gap-2 gap-md-3">
+                <a href="{{ url_for('pedido_nuevo') }}" class="btn btn-primary btn-pill py-2">
+                    ➕ Registrar nuevo pedido
+                </a>
+                <a href="{{ url_for('pedidos_list') }}" class="btn btn-outline-secondary btn-pill py-2">
+                    📃 Ver lista de pedidos
+                </a>
+                <a href="{{ url_for('reportes') }}" class="btn btn-success btn-pill py-2">
+                    📊 Ver reportes y consultas
+                </a>
+                <a href="{{ url_for('menus_list') }}" class="btn btn-warning btn-pill py-2">
+                    📋 Ver menús disponibles
+                </a>
+
+            </div>
+        </div>
+
+        <!-- COMO FUNCIONA -->
+        <div class="card-soft mt-3">
+            <h6 class="fw-bold mb-3">Cómo funciona</h6>
+            <ol class="mb-0">
+                <li>Selecciona cliente, menú y tipo de pedido (para llevar o domicilio).</li>
+                <li>Registra costos, repartidor y método de pago.</li>
+                <li>Actualiza el estado del pedido: pendiente, en preparación, entregado, etc.</li>
+                <li>Consulta reportes de pagos, métodos más usados y clientes que más consumen.</li>
+            </ol>
+        </div>
+
+    </div>
+
+    <!-- ------------------- DERECHA ------------------- -->
+    <div class="dash-right">
+
+        <div class="stat">
+            <small>PEDIDOS DE HOY</small>
+            <h3>{{ total_hoy }}</h3>
+        </div>
+        <div class="stat">
+            <small>PENDIENTES</small>
+            <h3>{{ total_pendientes }}</h3>
+        </div>
+        <div class="stat">
+            <small>ENTREGADOS</small>
+            <h3>{{ total_entregados }}</h3>
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

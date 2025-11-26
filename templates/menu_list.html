@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Menús disponibles{% endblock %}
+
+{% block content %}
+<h1 class="titulo">Menús disponibles</h1>
+<p>Selecciona un menú para realizar tu pedido</p>
+
+<!-- 🔍 BUSCADOR -->
+<input type="text" id="buscador" placeholder="Buscar menú..." class="buscador">
+
+<!-- GRID -->
+<div class="menu-container" id="menu-container">
+    {% for m in menus %}
+    <div class="menu-card" data-name="{{ m.Descripcion | lower }}">
+        
+        <img src="{{ url_for('static', filename='img/' ~ m.Imagen) }}" 
+             alt="{{ m.Descripcion }}" class="menu-img">
+
+        <div class="menu-info">
+            <h3>{{ m.Descripcion }}</h3>
+            <p class="precio">$ {{ m.Precio }}</p>
+
+
+            <a href="{{ url_for('pedido_nuevo', menu_id=m.idMenu) }}" class="btn-pedir">
+                🍽 Hacer pedido
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- JS FILTRO EN VIVO -->
+<script>
+    const buscador = document.getElementById("buscador");
+    const cards = document.querySelectorAll(".menu-card");
+
+    buscador.addEventListener("keyup", () => {
+        let filtro = buscador.value.toLowerCase();
+
+        cards.forEach(card => {
+            let nombre = card.getAttribute("data-name");
+            card.style.display = nombre.includes(filtro) ? "block" : "none";
+        });
+    });
+</script>
+
+{% endblock %}
