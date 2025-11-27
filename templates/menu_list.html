@@ -46,9 +46,11 @@
             </p>
             <p class="precio">$ {{ '%.2f'|format(m.Precio) }}</p>
 
-            <button type="button" class="btn-pedir seleccionar-btn">
-                <span class="menu-select-label">Seleccionar</span>
-            </button>
+            <div class="menu-quantity">
+                <button type="button" class="qty-btn minus" disabled>-</button>
+                <span class="qty-display">0</span>
+                <button type="button" class="qty-btn plus">+</button>
+            </div>
         </div>
     </div>
     {% endfor %}
@@ -73,60 +75,116 @@
     });
 
     function actualizarResumen() {
-        const total = selectedMenus.size;
-        if (total === 0) {
+        const totales = Array.from(selectedMenus.values()).reduce((acc, item) => acc + item.cantidad, 0);
+        if (totales === 0) {
             seleccionResumen.textContent = "Selecciona uno o más menús";
-        } else if (total === 1) {
-            const first = selectedMenus.values().next().value;
-            seleccionResumen.textContent = `${total} menú seleccionado: ${first.descripcion}`;
-        } else {
-            seleccionResumen.textContent = `${total} menús seleccionados`;
+            btnHacerPedido.disabled = true;
+            return;
         }
-        btnHacerPedido.disabled = total === 0;
+        const detalle = Array.from(selectedMenus.values())
+            .map(item => `${item.cantidad}x ${item.descripcion}`)
+            .slice(0, 2)
+            .join(", ");
+        const extra = selectedMenus.size > 2 ? "…" : "";
+        seleccionResumen.textContent = `${totales} porciones seleccionadas (${detalle}${extra})`;
+        btnHacerPedido.disabled = false;
     }
 
-    function toggleSeleccion(card) {
+    function actualizarCard(card) {
+        const menuId = card.dataset.menuId;
+        const registro = selectedMenus.get(menuId);
+        const qty = registro ? registro.cantidad : 0;
+        const qtyDisplay = card.querySelector('.qty-display');
+        const minusBtn = card.querySelector('.qty-btn.minus');
+        if (qtyDisplay) {
+            qtyDisplay.textContent = qty;
+        }
+        if (minusBtn) {
+            minusBtn.disabled = qty === 0;
+        }
+        if (qty > 0) {
+            card.classList.add("selected");
+        } else {
+            card.classList.remove("selected");
+        }
+    }
+
+    function cambiarCantidad(card, delta) {
         const menuId = card.dataset.menuId;
         const descripcion = card.dataset.menuDescripcion;
         if (!menuId) {
             return;
         }
-
-        if (selectedMenus.has(menuId)) {
+        const registro = selectedMenus.get(menuId) || { id: menuId, descripcion, cantidad: 0 };
+        registro.cantidad = Math.max(0, registro.cantidad + delta);
+        if (registro.cantidad === 0) {
             selectedMenus.delete(menuId);
-            card.classList.remove("selected");
-            const label = card.querySelector(".menu-select-label");
-            if (label) {
-                label.textContent = "Seleccionar";
-            }
         } else {
-            selectedMenus.set(menuId, { id: menuId, descripcion });
-            card.classList.add("selected");
-            const label = card.querySelector(".menu-select-label");
-            if (label) {
-                label.textContent = "Seleccionado";
-            }
+            selectedMenus.set(menuId, registro);
         }
+        actualizarCard(card);
+        actualizarResumen();
+    }
+
+    function inicializarDesdeURL() {
+        const params = new URLSearchParams(window.location.search);
+        const menuIdsParam = params.get('menu_ids');
+        if (!menuIdsParam) {
+            return;
+        }
+        const counts = {};
+        menuIdsParam.split(',').forEach(idStr => {
+            const trimmed = idStr.trim();
+            if (trimmed === '' || isNaN(trimmed)) {
+                return;
+            }
+            counts[trimmed] = (counts[trimmed] || 0) + 1;
+        });
+        cards.forEach(card => {
+            const menuId = card.dataset.menuId;
+            const descripcion = card.dataset.menuDescripcion;
+            const cantidad = counts[menuId];
+            if (cantidad && cantidad > 0) {
+                selectedMenus.set(menuId, { id: menuId, descripcion, cantidad });
+                actualizarCard(card);
+            }
+        });
         actualizarResumen();
     }
 
     cards.forEach(card => {
-        card.addEventListener("click", (event) => {
-            const button = event.target.closest(".seleccionar-btn");
-            if (button || event.target.closest(".menu-card")) {
-                toggleSeleccion(card);
-            }
-        });
+        const plusBtn = card.querySelector('.qty-btn.plus');
+        const minusBtn = card.querySelector('.qty-btn.minus');
+        if (plusBtn) {
+            plusBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                cambiarCantidad(card, 1);
+            });
+        }
+        if (minusBtn) {
+            minusBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                if (!minusBtn.disabled) {
+                    cambiarCantidad(card, -1);
+                }
+            });
+        }
     });
 
     btnHacerPedido.addEventListener("click", () => {
-        if (selectedMenus.size === 0) {
+        const ids = [];
+        selectedMenus.forEach(item => {
+            for (let i = 0; i < item.cantidad; i += 1) {
+                ids.push(item.id);
+            }
+        });
+        if (ids.length === 0) {
             return;
         }
-        const ids = Array.from(selectedMenus.keys()).join(",");
-        window.location.href = `${pedidoUrl}?menu_ids=${encodeURIComponent(ids)}`;
+        window.location.href = `${pedidoUrl}?menu_ids=${encodeURIComponent(ids.join(","))}`;
     });
 
+    inicializarDesdeURL();
     actualizarResumen();
 </script>
 
@@ -222,25 +280,45 @@
     opacity: 1;
 }
 
-.seleccionar-btn {
-    width: 100%;
-    background: transparent;
+
+.menu-quantity {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.75rem;
+}
+
+.qty-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
     border: 1px solid #0d6efd;
+    background: #fff;
     color: #0d6efd;
-    font-weight: 600;
-    border-radius: 999px;
-    padding: 0.6rem 1rem;
+    font-weight: 700;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
     transition: all 0.2s ease;
 }
 
-.menu-card.selected .seleccionar-btn {
-    background-color: #0d6efd;
+.qty-btn.plus {
+    background: #0d6efd;
     color: #fff;
 }
 
-.seleccionar-btn:hover {
-    background-color: #0d6efd;
-    color: #fff;
+.qty-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.qty-display {
+    min-width: 28px;
+    text-align: center;
+    font-weight: 600;
+    color: #0d6efd;
 }
 
 .restaurante {

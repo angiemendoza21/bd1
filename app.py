@@ -10,7 +10,7 @@ from flask import send_file
 
 app = Flask(__name__)
 app.secret_key = "cambia_esta_clave"
-IVA_RATE = Decimal("0.12")
+IVA_RATE = Decimal("0.15")
 
 # -------------------------------------------------------------------
 #  CONEXIÓN A SQL SERVER (BD1)
@@ -198,7 +198,6 @@ def cargar_tablas_maestras():
 @app.route("/pedidos/nuevo", methods=["GET", "POST"])
 def pedido_nuevo():
     selected_menu_ids = []
-    seen_menu_ids = set()
 
     def _append_from_raw(raw_value):
         if raw_value is None:
@@ -206,10 +205,7 @@ def pedido_nuevo():
         for piece in str(raw_value).split(','):
             piece = piece.strip()
             if piece.isdigit():
-                value = int(piece)
-                if value not in seen_menu_ids:
-                    selected_menu_ids.append(value)
-                    seen_menu_ids.add(value)
+                selected_menu_ids.append(int(piece))
 
     if request.args:
         for value in request.args.getlist("menu_id"):
@@ -302,6 +298,8 @@ def pedido_nuevo():
         id_metodo_pago     = int(request.form["id_metodo_pago"])
         id_costo_entrega   = int(request.form["id_costo_entrega"]) if request.form.get("id_costo_entrega") else None
         id_repartidor      = int(request.form["id_repartidor"]) if request.form.get("id_repartidor") else None
+        direccion_entrega_raw = (request.form.get("direccion_entrega") or "").strip()
+        direccion_entrega  = direccion_entrega_raw if direccion_entrega_raw else None
         fecha_pedido       = request.form.get("fecha_pedido")
         fecha_entrega_raw  = (request.form.get("fecha_entrega") or "").strip()
         hora_entrega_raw   = (request.form.get("hora_entrega") or "").strip()
@@ -320,16 +318,16 @@ def pedido_nuevo():
         (id_pedido, id_cliente, idEmpleado, idEstado_pedido, id_costo_pedido,
          id_tipo_pedido, idMenu, idRestaurante, idReferencia,
          id_comprobante_de_entrega, idMetodo_de_pago, id_costo_entrega,
-         idRepartidor, Fecha_pedido, Fecha_entrega, Total_pedido,
+         idRepartidor, Fecha_pedido, Fecha_entrega, Direccion_entrega, Total_pedido,
          Costo_servicio, Total_pagar)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             nuevo_id, id_cliente, id_empleado, id_estado_pedido, id_costo_pedido,
             id_tipo_pedido, id_menu, id_restaurante, id_referencia,
             None,
             id_metodo_pago, id_costo_entrega,
-            id_repartidor, fecha_pedido, fecha_entrega, total_pedido,
+            id_repartidor, fecha_pedido, fecha_entrega, direccion_entrega, total_pedido,
             costo_servicio, total_pagar
         )
 
@@ -383,12 +381,22 @@ def pedido_nuevo():
     restaurantes_vistos = set()
 
     if selected_menu_ids:
+        menu_counts = {}
+        ordered_ids = []
         for menu_id in selected_menu_ids:
+            if menu_id not in menu_counts:
+                ordered_ids.append(menu_id)
+                menu_counts[menu_id] = 0
+            menu_counts[menu_id] += 1
+
+        for menu_id in ordered_ids:
             menu = next((m for m in maestras["menus"] if m["idMenu"] == menu_id), None)
             if not menu:
                 continue
+            cantidad = menu_counts.get(menu_id, 1)
             precio_decimal = Decimal(str(menu.get("Precio", 0)))
-            subtotal_preseleccionado += precio_decimal
+            total_menu = precio_decimal * Decimal(cantidad)
+            subtotal_preseleccionado += total_menu
             nombre_restaurante = restaurantes_map.get(menu.get("idRestaurante"))
             if menu.get("idRestaurante") and menu["idRestaurante"] not in restaurantes_vistos:
                 restaurantes_seleccionados.append({
@@ -402,6 +410,9 @@ def pedido_nuevo():
                 "Descripcion": menu.get("Descripcion"),
                 "Precio": float(precio_decimal),
                 "PrecioTexto": f"{precio_decimal:.2f}",
+                "Subtotal": float(total_menu),
+                "SubtotalTexto": f"{total_menu:.2f}",
+                "Cantidad": cantidad,
                 "idRestaurante": menu.get("idRestaurante"),
                 "Restaurante": nombre_restaurante
             })
@@ -471,6 +482,8 @@ def pedido_editar(id_pedido):
         # ⭐ CORREGIDO: Permitir valores vacíos
         id_costo_entrega   = int(request.form["id_costo_entrega"]) if request.form.get("id_costo_entrega") else None
         id_repartidor      = int(request.form["id_repartidor"]) if request.form.get("id_repartidor") else None
+        direccion_entrega_raw = (request.form.get("direccion_entrega") or "").strip()
+        direccion_entrega  = direccion_entrega_raw if direccion_entrega_raw else None
         
         fecha_pedido       = request.form.get("fecha_pedido")
         fecha_entrega_raw  = (request.form.get("fecha_entrega") or "").strip()
@@ -500,6 +513,7 @@ def pedido_editar(id_pedido):
             idRepartidor = ?,
             Fecha_pedido = ?,
             Fecha_entrega = ?,
+            Direccion_entrega = ?,
             Total_pedido = ?,
             Costo_servicio = ?,
             Total_pagar = ?
@@ -509,7 +523,7 @@ def pedido_editar(id_pedido):
             id_cliente, id_empleado, id_estado_pedido, id_costo_pedido,
             id_tipo_pedido, id_menu, id_restaurante, id_referencia,
             id_metodo_pago, id_costo_entrega, id_repartidor,
-            fecha_pedido, fecha_entrega, total_pedido,
+            fecha_pedido, fecha_entrega, direccion_entrega, total_pedido,
             costo_servicio, total_pagar, id_pedido
         )
 
@@ -599,6 +613,7 @@ def factura_pdf(id_pedido):
         P.id_pedido,
         C.Nombre + ' ' + C.Apellido AS Cliente,
         C.Telefono,
+        P.Direccion_entrega,
         P.Total_pedido,
         P.Costo_servicio,
         P.Total_pagar,
@@ -712,9 +727,7 @@ def factura_pdf(id_pedido):
     pdf.drawString(40, 710, "DATOS DEL CLIENTE")
     pdf.setFont("Helvetica", 11)
     pdf.drawString(40, 690, f"{pedido_data['Cliente']}")
-    direccion_cliente = pedido_data.get('Direccion') if 'Direccion' in pedido_data else None
-    if not direccion_cliente:
-        direccion_cliente = 'No registrada'
+    direccion_cliente = pedido_data.get('Direccion_entrega') or pedido_data.get('Direccion') or 'No registrada'
     pdf.drawString(40, 675, f"Dirección: {direccion_cliente}")
     pdf.drawString(40, 660, f"Teléfono: {pedido_data.get('Telefono', 'Sin teléfono')}")
 

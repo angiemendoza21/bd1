@@ -12,7 +12,7 @@
 
   {% set tiene_menus_seleccionados = menus_seleccionados and (menus_seleccionados | length > 0) %}
 
-  <form method="POST" class="pedido-form">
+  <form method="POST" class="pedido-form" data-modo="{{ modo }}">
     <input type="hidden" id="iva-rate" value="{{ iva_rate }}">
     <input type="hidden" name="id_restaurante" id="id_restaurante" value="{% if pedido %}{{ pedido.idRestaurante }}{% elif tiene_menus_seleccionados %}{{ menus_seleccionados[0].idRestaurante }}{% endif %}">
 
@@ -173,6 +173,22 @@
               </select>
             </div>
 
+            <div class="col-lg-4 col-md-6" data-field="direccion_entrega" style="display: none;">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Dirección de entrega <span class="text-danger">*</span>
+              </label>
+              <input
+                type="text"
+                name="direccion_entrega"
+                id="direccion_entrega"
+                class="form-control form-control-lg rounded-3 shadow-sm"
+                placeholder="Ej. Calle 10 y Av. Siempre Viva"
+                value="{% if pedido %}{{ pedido.get('Direccion_entrega', '') or '' }}{% endif %}"
+                disabled
+              >
+             
+            </div>
+
             <div class="col-lg-4 col-md-6">
               <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
                 Método de pago <span class="text-danger">*</span>
@@ -256,7 +272,7 @@
 
             <div class="totales-item">
               <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                IVA
+                IVA 15%
               </label>
               <div class="input-group input-group-lg shadow-sm rounded-3">
                 <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
@@ -283,7 +299,7 @@
           <button type="submit" class="btn btn-primary btn-lg px-5 rounded-pill shadow-sm">
             💾 Guardar
           </button>
-          <a href="{{ url_for('pedidos_list') }}" class="btn btn-outline-secondary btn-lg px-5 rounded-pill">
+          <a href="{{ url_for('pedidos_list') }}" id="cancelar-pedido-btn" class="btn btn-outline-secondary btn-lg px-5 rounded-pill">
             Cancelar
           </a>
         </div>
@@ -292,13 +308,22 @@
       {% if modo == 'nuevo' or tiene_menus_seleccionados %}
       <aside class="form-sidebar">
         <div class="section-card mb-0">
-          <h5 class="section-title">Menús seleccionados</h5>
+          <div class="sidebar-header">
+            <h5 class="section-title mb-0">Menús seleccionados</h5>
+            <button type="button"
+                    id="agregar-platos-btn"
+                    class="sidebar-add-btn"
+                    data-url="{{ url_for('menus_list') }}">
+              ➕ Agregar más platos
+            </button>
+          </div>
           {% if tiene_menus_seleccionados %}
           <div class="sidebar-list">
             {% for menu in menus_seleccionados %}
             <div class="sidebar-item">
               <div class="sidebar-item-info">
                 <span class="sidebar-item-title">{{ menu.Descripcion }}</span>
+                <span class="sidebar-item-qty">x{{ menu.Cantidad }} · ${{ menu.PrecioTexto }} c/u</span>
                 <span class="sidebar-item-restaurant">
                   {% if menu.Restaurante %}
                     {% set nombre_restaurante = menu.Restaurante %}
@@ -311,9 +336,11 @@
                   {% endif %}
                 </span>
               </div>
-              <span class="sidebar-item-price">${{ menu.PrecioTexto }}</span>
+              <span class="sidebar-item-price">${{ menu.SubtotalTexto }}</span>
             </div>
+            {% for _ in range(menu.Cantidad) %}
             <input type="hidden" name="selected_menu_ids" value="{{ menu.idMenu }}">
+            {% endfor %}
             {% endfor %}
           </div>
           {% else %}
@@ -486,6 +513,37 @@
   color: #6c757d;
 }
 
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.sidebar-add-btn {
+  border: 1px solid #0d6efd;
+  background: transparent;
+  color: #0d6efd;
+  border-radius: 999px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.sidebar-add-btn:hover {
+  background: #0d6efd;
+  color: #fff;
+}
+
+.sidebar-item-qty {
+  display: block;
+  font-size: 0.85rem;
+  color: #495057;
+  margin-bottom: 0.15rem;
+}
+
 .sidebar-item-price {
   font-weight: 600;
   color: #0d6efd;
@@ -546,11 +604,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const costoServicioInput = document.getElementById('costo_servicio');
   const costoServicioRequired = document.getElementById('costo_servicio_required');
   const totalPagarInput = document.getElementById('total_pagar');
+  const formElement = document.querySelector('form.pedido-form');
+  const formMode = formElement ? formElement.getAttribute('data-modo') : null;
+  const FORM_STATE_KEY = 'pedidoFormState';
   const tipoPedidoSelect = document.getElementById('tipo_pedido');
   const costoEntregaSelect = document.querySelector('select[name="id_costo_entrega"]');
   const referenciaSelect = document.querySelector('select[name="id_referencia"]');
   const repartidorSelect = document.getElementById('repartidor');
   const repartidorRequired = document.getElementById('repartidor_required');
+  const direccionEntregaContainer = document.querySelector('[data-field="direccion_entrega"]');
+  const direccionEntregaInput = document.getElementById('direccion_entrega');
   const costoEntregaContainer = document.querySelector('[data-field="costo_entrega"]');
   const referenciaContainer = document.querySelector('[data-field="referencia"]');
   const repartidorContainer = document.querySelector('[data-field="repartidor"]');
@@ -563,10 +626,90 @@ document.addEventListener('DOMContentLoaded', function() {
   const ivaResumenBadge = document.getElementById('iva_resumen');
   const ivaInput = document.getElementById('iva_monto');
   const restauranteHiddenInput = document.getElementById('id_restaurante');
+  const agregarPlatosBtn = document.getElementById('agregar-platos-btn');
+  const cancelarPedidoBtn = document.getElementById('cancelar-pedido-btn');
   const selectedMenusData = {{ (menus_seleccionados or []) | tojson | safe }};
+  const camposIgnorados = new Set(['total_pedido', 'total_pagar', 'iva_monto']);
+
+  function guardarEstadoFormulario() {
+    if (!formElement || formMode !== 'nuevo') {
+      return;
+    }
+    const data = {};
+    const elements = formElement.querySelectorAll('input, select, textarea');
+    elements.forEach(el => {
+      if (!el.name || el.name === 'selected_menu_ids' || camposIgnorados.has(el.name)) {
+        return;
+      }
+      if ((el.type === 'checkbox' || el.type === 'radio')) {
+        if (el.checked) {
+          if (!data[el.name]) {
+            data[el.name] = [];
+          }
+          data[el.name].push(el.value);
+        }
+      } else {
+        data[el.name] = el.value;
+      }
+    });
+    data.__timestamp = Date.now();
+    try {
+      sessionStorage.setItem(FORM_STATE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('No se pudo guardar el estado del formulario', error);
+    }
+  }
+
+  function restaurarEstadoFormulario() {
+    if (!formElement) {
+      return;
+    }
+    if (formMode !== 'nuevo') {
+      sessionStorage.removeItem(FORM_STATE_KEY);
+      return;
+    }
+    const raw = sessionStorage.getItem(FORM_STATE_KEY);
+    if (!raw) {
+      return;
+    }
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (error) {
+      console.error('No se pudo restaurar el estado del formulario', error);
+      return;
+    }
+    const elements = formElement.querySelectorAll('input, select, textarea');
+    elements.forEach(el => {
+      if (!el.name || el.name === 'selected_menu_ids' || camposIgnorados.has(el.name)) {
+        return;
+      }
+      const value = data[el.name];
+      if (value === undefined) {
+        return;
+      }
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        if (Array.isArray(value)) {
+          el.checked = value.includes(el.value);
+        } else {
+          el.checked = el.value === value;
+        }
+      } else {
+        el.value = value;
+      }
+    });
+  }
+
+  function limpiarEstadoFormulario() {
+    sessionStorage.removeItem(FORM_STATE_KEY);
+  }
 
   if (selectedMenusData.length > 0 && totalPedidoInput) {
-    const subtotal = selectedMenusData.reduce((acc, item) => acc + (parseFloat(item.Precio) || 0), 0);
+    const subtotal = selectedMenusData.reduce((acc, item) => {
+      const price = parseFloat(item.Precio) || 0;
+      const qty = parseInt(item.Cantidad, 10) || 1;
+      return acc + price * qty;
+    }, 0);
     totalPedidoInput.value = subtotal.toFixed(2);
     totalPedidoInput.setAttribute('readonly', 'readonly');
   } else if (totalPedidoInput) {
@@ -578,6 +721,40 @@ document.addEventListener('DOMContentLoaded', function() {
     if (primerMenu && primerMenu.idRestaurante) {
       restauranteHiddenInput.value = primerMenu.idRestaurante;
     }
+  }
+
+  if (agregarPlatosBtn) {
+    agregarPlatosBtn.addEventListener('click', () => {
+      guardarEstadoFormulario();
+      const baseUrl = agregarPlatosBtn.getAttribute('data-url');
+      const hiddenInputs = document.querySelectorAll('input[name="selected_menu_ids"]');
+      const ids = Array.from(hiddenInputs)
+        .map(input => input.value)
+        .filter(Boolean);
+      if (!baseUrl) {
+        return;
+      }
+      if (ids.length === 0) {
+        window.location.href = baseUrl;
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set('menu_ids', ids.join(','));
+      window.location.href = `${baseUrl}?${params.toString()}`;
+    });
+  }
+
+  if (formElement) {
+    formElement.addEventListener('submit', () => {
+      guardarEstadoFormulario();
+      limpiarEstadoFormulario();
+    });
+  }
+
+  if (cancelarPedidoBtn) {
+    cancelarPedidoBtn.addEventListener('click', () => {
+      limpiarEstadoFormulario();
+    });
   }
 
   // Función para calcular el total a pagar
@@ -624,12 +801,20 @@ document.addEventListener('DOMContentLoaded', function() {
         horaEntregaInput.removeAttribute('required');
         horaEntregaInput.value = '';
       }
+      if (direccionEntregaContainer && direccionEntregaInput) {
+        direccionEntregaContainer.style.display = 'none';
+        direccionEntregaInput.removeAttribute('required');
+        direccionEntregaInput.value = '';
+        direccionEntregaInput.setAttribute('disabled', 'disabled');
+      }
       return;
     }
 
     const tipoPedidoTexto = tipoPedidoSelect.options[tipoPedidoSelect.selectedIndex].text.toLowerCase();
     const esSinEntrega = tipoPedidoTexto.includes('local') || tipoPedidoTexto.includes('llevar');
     const esProgramado = tipoPedidoTexto.includes('programado');
+    const esDomicilio = tipoPedidoTexto.includes('domicilio');
+    const requiereDireccion = (esProgramado || esDomicilio) && !esSinEntrega;
 
     if (fechaEntregaContainer && fechaEntregaInput) {
       if (esProgramado) {
@@ -650,6 +835,19 @@ document.addEventListener('DOMContentLoaded', function() {
         horaEntregaContainer.style.display = 'none';
         horaEntregaInput.removeAttribute('required');
         horaEntregaInput.value = '';
+      }
+    }
+
+    if (direccionEntregaContainer && direccionEntregaInput) {
+      if (requiereDireccion) {
+        direccionEntregaContainer.style.display = 'block';
+        direccionEntregaInput.removeAttribute('disabled');
+        direccionEntregaInput.setAttribute('required', 'required');
+      } else {
+        direccionEntregaContainer.style.display = 'none';
+        direccionEntregaInput.removeAttribute('required');
+        direccionEntregaInput.value = '';
+        direccionEntregaInput.setAttribute('disabled', 'disabled');
       }
     }
 
@@ -853,6 +1051,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ✅ INICIALIZAR AL CARGAR
+  restaurarEstadoFormulario();
   calcularTotal();
   verificarCamposSegunTipo();
   

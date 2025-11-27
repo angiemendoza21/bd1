@@ -34,7 +34,10 @@
           </thead>
           <tbody>
             {% for p in pedidos %}
-            <tr class="border-bottom">
+            <tr class="border-bottom"
+                data-pedido-id="{{ p.id_pedido }}"
+                data-estado="{{ p.Estado }}"
+                data-auto-avanza="{{ 1 if p.Estado == 'Pendiente' else 0 }}">
               {% set estado_bloqueado = p.Estado|lower in ['entregado', 'cancelado'] %}
               <td class="px-4 py-3 fw-semibold">{{ p.id_pedido }}</td>
               <td class="px-3 py-3">{{ p.Cliente }}</td>
@@ -166,4 +169,126 @@
   border-bottom: none !important;
 }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const rows = document.querySelectorAll('tr[data-pedido-id]');
+  const estadoIds = {
+    'Pendiente': '1',
+    'En preparación': '2',
+    'En camino': '3',
+    'Entregado': '4',
+    'Cancelado': '5'
+  };
+  const secuenciaAuto = ['En preparación', 'En camino', 'Entregado'];
+  const intervaloMs = 10000;
+  const cambioEstadoUrl = "{{ url_for('pedido_cambiar_estado') }}";
+  const timersMap = new Map();
+
+  function normalizarClase(nombre) {
+    return nombre.toLowerCase().replace(/\s+/g, '-');
+  }
+
+  function limpiarTimers(row) {
+    const timers = timersMap.get(row);
+    if (timers) {
+      timers.forEach(clearTimeout);
+      timersMap.delete(row);
+    }
+  }
+
+  async function enviarCambioEstado(idPedido, estadoId) {
+    try {
+      const response = await fetch(cambioEstadoUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          id_pedido: idPedido,
+          id_estado_pedido: estadoId
+        })
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Error al actualizar estado automático', error);
+      return false;
+    }
+  }
+
+  function actualizarSelectVisual(select, estadoNombre) {
+    select.classList.forEach(cls => {
+      if (cls.startsWith('select-estado-')) {
+        select.classList.remove(cls);
+      }
+    });
+    select.classList.add(`select-estado-${normalizarClase(estadoNombre)}`);
+  }
+
+  function iniciarSecuencia(row, select) {
+    if (timersMap.has(row)) {
+      return;
+    }
+    const pedidoId = row.dataset.pedidoId;
+    const timers = [];
+
+    secuenciaAuto.forEach((estadoObjetivo, index) => {
+      const delay = intervaloMs * (index + 1);
+      const timerId = setTimeout(async () => {
+        if (row.dataset.autoAvanza !== '1') {
+          limpiarTimers(row);
+          return;
+        }
+
+        const estadoEsperado = index === 0 ? 'Pendiente' : secuenciaAuto[index - 1];
+        const estadoActual = (select.options[select.selectedIndex]?.text || '').trim();
+        if (estadoActual !== estadoEsperado) {
+          limpiarTimers(row);
+          return;
+        }
+
+        const estadoId = estadoIds[estadoObjetivo];
+        if (!estadoId) {
+          limpiarTimers(row);
+          return;
+        }
+
+        const ok = await enviarCambioEstado(pedidoId, estadoId);
+        if (!ok) {
+          row.dataset.autoAvanza = '0';
+          limpiarTimers(row);
+          return;
+        }
+
+        select.value = estadoId;
+        actualizarSelectVisual(select, estadoObjetivo);
+        row.dataset.estado = estadoObjetivo;
+
+        if (estadoObjetivo === 'Entregado') {
+          row.dataset.autoAvanza = '0';
+          select.disabled = true;
+          select.title = 'Pedido entregado: no editable';
+        }
+      }, delay);
+      timers.push(timerId);
+    });
+
+    timersMap.set(row, timers);
+  }
+
+  rows.forEach(row => {
+    const select = row.querySelector('select[name="id_estado_pedido"]');
+    if (!select) {
+      return;
+    }
+
+    select.addEventListener('change', () => {
+      row.dataset.autoAvanza = '0';
+      limpiarTimers(row);
+    }, { once: false });
+
+    if (row.dataset.autoAvanza === '1' && !select.disabled) {
+      iniciarSecuencia(row, select);
+    }
+  });
+});
+</script>
 {% endblock %}
