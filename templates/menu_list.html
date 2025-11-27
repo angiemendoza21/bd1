@@ -3,27 +3,52 @@
 
 {% block content %}
 <h1 class="titulo">Menús disponibles</h1>
-<p>Selecciona un menú para realizar tu pedido</p>
+<p>Selecciona uno o varios menús y luego pulsa <strong>Hacer pedido</strong> para continuar.</p>
 
-<!-- 🔍 BUSCADOR -->
-<input type="text" id="buscador" placeholder="Buscar menú..." class="buscador">
+<!-- 🔍 BUSCADOR / ACCIONES -->
+<div class="menu-toolbar">
+    <div class="menu-toolbar-search">
+        <input type="text" id="buscador" placeholder="Buscar menú..." class="buscador">
+    </div>
+    <div class="menu-toolbar-actions">
+        <span id="seleccion-resumen" class="seleccion-resumen">Selecciona uno o más menús</span>
+        <button type="button" id="btn-hacer-pedido" class="btn-hacer-pedido" disabled>
+            🍽 Hacer pedido
+        </button>
+    </div>
+</div>
 
 <!-- GRID -->
 <div class="menu-container" id="menu-container">
     {% for m in menus %}
-    <div class="menu-card" data-name="{{ m.Descripcion | lower }}">
-        
-        <img src="{{ url_for('static', filename='img/' ~ m.Imagen) }}" 
+    <div class="menu-card"
+         data-name="{{ m.Descripcion | lower }}"
+         data-menu-id="{{ m.idMenu }}"
+         data-menu-precio="{{ '%.2f'|format(m.Precio) }}"
+         data-menu-restaurante="{{ m.idRestaurante }}"
+         data-menu-descripcion="{{ m.Descripcion }}">
+
+        <div class="menu-card-select" aria-hidden="true">
+            <span class="check-icon">✓</span>
+        </div>
+
+        <img src="{{ url_for('static', filename='img/' ~ m.Imagen) }}"
              alt="{{ m.Descripcion }}" class="menu-img">
 
         <div class="menu-info">
             <h3>{{ m.Descripcion }}</h3>
-            <p class="precio">$ {{ m.Precio }}</p>
+            {% set nombre_restaurante = (m.NombreRestaurante or '') %}
+            {% if nombre_restaurante and nombre_restaurante.lower().startswith('restaurante ') %}
+              {% set nombre_restaurante = nombre_restaurante[12:] %}
+            {% endif %}
+            <p class="restaurante">
+                Restaurante: {{ nombre_restaurante.strip() if nombre_restaurante else 'Sin registro' }}
+            </p>
+            <p class="precio">$ {{ '%.2f'|format(m.Precio) }}</p>
 
-
-            <a href="{{ url_for('pedido_nuevo', menu_id=m.idMenu) }}" class="btn-pedir">
-                🍽 Hacer pedido
-            </a>
+            <button type="button" class="btn-pedir seleccionar-btn">
+                <span class="menu-select-label">Seleccionar</span>
+            </button>
         </div>
     </div>
     {% endfor %}
@@ -33,6 +58,10 @@
 <script>
     const buscador = document.getElementById("buscador");
     const cards = document.querySelectorAll(".menu-card");
+    const seleccionResumen = document.getElementById("seleccion-resumen");
+    const btnHacerPedido = document.getElementById("btn-hacer-pedido");
+    const selectedMenus = new Map();
+    const pedidoUrl = "{{ url_for('pedido_nuevo') }}";
 
     buscador.addEventListener("keyup", () => {
         let filtro = buscador.value.toLowerCase();
@@ -42,6 +71,198 @@
             card.style.display = nombre.includes(filtro) ? "block" : "none";
         });
     });
+
+    function actualizarResumen() {
+        const total = selectedMenus.size;
+        if (total === 0) {
+            seleccionResumen.textContent = "Selecciona uno o más menús";
+        } else if (total === 1) {
+            const first = selectedMenus.values().next().value;
+            seleccionResumen.textContent = `${total} menú seleccionado: ${first.descripcion}`;
+        } else {
+            seleccionResumen.textContent = `${total} menús seleccionados`;
+        }
+        btnHacerPedido.disabled = total === 0;
+    }
+
+    function toggleSeleccion(card) {
+        const menuId = card.dataset.menuId;
+        const descripcion = card.dataset.menuDescripcion;
+        if (!menuId) {
+            return;
+        }
+
+        if (selectedMenus.has(menuId)) {
+            selectedMenus.delete(menuId);
+            card.classList.remove("selected");
+            const label = card.querySelector(".menu-select-label");
+            if (label) {
+                label.textContent = "Seleccionar";
+            }
+        } else {
+            selectedMenus.set(menuId, { id: menuId, descripcion });
+            card.classList.add("selected");
+            const label = card.querySelector(".menu-select-label");
+            if (label) {
+                label.textContent = "Seleccionado";
+            }
+        }
+        actualizarResumen();
+    }
+
+    cards.forEach(card => {
+        card.addEventListener("click", (event) => {
+            const button = event.target.closest(".seleccionar-btn");
+            if (button || event.target.closest(".menu-card")) {
+                toggleSeleccion(card);
+            }
+        });
+    });
+
+    btnHacerPedido.addEventListener("click", () => {
+        if (selectedMenus.size === 0) {
+            return;
+        }
+        const ids = Array.from(selectedMenus.keys()).join(",");
+        window.location.href = `${pedidoUrl}?menu_ids=${encodeURIComponent(ids)}`;
+    });
+
+    actualizarResumen();
 </script>
+
+<style>
+.menu-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.menu-toolbar-search {
+    flex: 1 1 240px;
+}
+
+.menu-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.seleccion-resumen {
+    font-size: 0.95rem;
+    color: #495057;
+}
+
+.btn-hacer-pedido {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 0.7rem 2rem;
+    font-weight: 600;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+}
+
+.btn-hacer-pedido:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.btn-hacer-pedido:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(13, 110, 253, 0.25);
+}
+
+.menu-card {
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.menu-card.selected {
+    box-shadow: 0 12px 30px rgba(13, 110, 253, 0.15);
+    transform: translateY(-4px);
+    border: 2px solid #0d6efd;
+}
+
+.menu-card-select {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid #ced4da;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #fff;
+    transition: all 0.2s ease;
+    pointer-events: none;
+}
+
+.menu-card.selected .menu-card-select {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+.menu-card .check-icon {
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.menu-card.selected .check-icon {
+    opacity: 1;
+}
+
+.seleccionar-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid #0d6efd;
+    color: #0d6efd;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.6rem 1rem;
+    transition: all 0.2s ease;
+}
+
+.menu-card.selected .seleccionar-btn {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.seleccionar-btn:hover {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.restaurante {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+@media (max-width: 768px) {
+    .menu-card {
+        margin-bottom: 1rem;
+    }
+
+    .menu-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .menu-toolbar-actions {
+        justify-content: space-between;
+    }
+}
+</style>
 
 {% endblock %}

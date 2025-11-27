@@ -35,6 +35,7 @@
           <tbody>
             {% for p in pedidos %}
             <tr class="border-bottom">
+              {% set estado_bloqueado = p.Estado|lower in ['entregado', 'cancelado'] %}
               <td class="px-4 py-3 fw-semibold">{{ p.id_pedido }}</td>
               <td class="px-3 py-3">{{ p.Cliente }}</td>
               <td class="px-3 py-3">{{ p.TipoPedido }}</td>
@@ -45,7 +46,8 @@
                   <select name="id_estado_pedido" 
                           class="estado-select-tabla select-estado-{{ p.Estado|lower|replace(' ', '-') }}"
                           onchange="this.form.submit()"
-                          style="min-width: 150px;">
+                          style="min-width: 150px;"
+                      {% if estado_bloqueado %}disabled title="Pedido {{ p.Estado|lower }}: no editable"{% endif %}>
                     
                     <option value="1" 
                             class="estado-pendiente"
@@ -65,9 +67,9 @@
                       En camino
                     </option>
                     
-                    <option value="4" 
-                            class="estado-entregado"
-                            {% if p.Estado == 'Entregado' %}selected{% endif %}>
+                        <option value="4" 
+                          class="estado-entregado"
+                          {% if p.Estado == 'Entregado' %}selected{% endif %}>
                       Entregado
                     </option>
                     
@@ -134,6 +136,12 @@
 .table tbody tr:hover {
   background-color: #f8f9fa;
   transform: scale(1.001);
+}
+
+.estado-select-tabla[disabled] {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background-color: #f8f9fa;
 }
 
 .card {

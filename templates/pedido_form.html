@@ -3,276 +3,278 @@
 
 {% block content %}
 <div class="container-fluid px-4 py-4">
-  <!-- Header -->
-  <div class="mb-4">
-    <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill mb-2">
-      {{ 'NUEVO PEDIDO' if modo=='nuevo' else 'EDITAR PEDIDO' }}
-    </span>
-    <h2 class="fw-bold mb-0">{{ 'Registrar pedido' if modo=='nuevo' else 'Editar pedido' }}</h2>
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center mb-4">
+    <div>
+      <h2 class="h3 mb-1">{{ 'Registrar pedido' if modo == 'nuevo' else 'Actualizar pedido' }}</h2>
+      <p class="text-muted mb-0">Completa la información y revisa el resumen de menús seleccionados.</p>
+    </div>
   </div>
 
-  <!-- Form Card -->
-  <div class="card border-0 shadow-sm rounded-4">
-    <div class="card-body p-4">
-      <form method="post">
+  {% set tiene_menus_seleccionados = menus_seleccionados and (menus_seleccionados | length > 0) %}
 
-        <!-- Sección 1: Cliente y Empleado -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-6">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Cliente <span class="text-danger">*</span>
-            </label>
-            <input 
-              list="clientes" 
-              name="nombre_cliente" 
-              placeholder="Seleccione o escriba un cliente"
-              class="form-control form-control-lg rounded-3 shadow-sm"
-              value="{% if pedido %}{{ pedido.nombre_cliente }}{% endif %}"
-              required
-            >
-            <datalist id="clientes">
-              {% for c in clientes %}
-              <option value="{{ c.NombreCompleto }}" data-id="{{ c.id_cliente }}">
-              {% endfor %}
-            </datalist>
-            
-            <!-- Campo oculto para el ID (si existe en BD) -->
-            <input type="hidden" name="id_cliente" id="id_cliente_hidden" value="{% if pedido %}{{ pedido.id_cliente }}{% endif %}">
-          </div>
+  <form method="POST" class="pedido-form">
+    <input type="hidden" id="iva-rate" value="{{ iva_rate }}">
+    <input type="hidden" name="id_restaurante" id="id_restaurante" value="{% if pedido %}{{ pedido.idRestaurante }}{% elif tiene_menus_seleccionados %}{{ menus_seleccionados[0].idRestaurante }}{% endif %}">
 
-          <div class="col-md-6">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Empleado que registra <span class="text-danger">*</span>
-            </label>
-            <select name="id_empleado" class="form-select form-select-lg rounded-3 shadow-sm" required>
-              <option value="">Seleccione...</option>
-              {% for e in empleados %}
-              <option value="{{ e.id_empleado }}"
-                {% if pedido and pedido.idEmpleado == e.id_empleado %}selected{% endif %}>
-                {{ e.NombreCompleto }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <!-- Sección 2: Estado, Tipo y Menú -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Estado del pedido <span class="text-danger">*</span>
-            </label>
-            <select id="estado-select" name="id_estado_pedido"
-                class="form-select form-select-lg rounded-3 shadow-sm"
-                required>
-              {% for e in estados %}
-              <option value="{{ e.id_estado_pedido }}"
-                  class="
-                      {% if e.descripcion == 'Pendiente' %}estado-pendiente
-                      {% elif e.descripcion == 'En preparación' %}estado-preparacion
-                      {% elif e.descripcion == 'En camino' %}estado-camino
-                      {% elif e.descripcion == 'Entregado' %}estado-entregado
-                      {% elif e.descripcion == 'Cancelado' %}estado-cancelado
-                      {% endif %}
-                  "
-                  {% if pedido and pedido.idEstado_pedido == e.id_estado_pedido %}
-                      selected
-                  {% endif %}
+    <div class="form-layout {% if modo == 'nuevo' or tiene_menus_seleccionados %}with-sidebar{% endif %}">
+      <div class="form-main">
+        <!-- Bloque: Datos del cliente -->
+        <div class="section-card mb-4">
+          <h5 class="section-title">Datos del cliente</h5>
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Cliente <span class="text-danger">*</span>
+              </label>
+              <input
+                list="clientes"
+                name="nombre_cliente"
+                placeholder="Seleccione o escriba un cliente"
+                class="form-control form-control-lg rounded-3 shadow-sm"
+                value="{% if pedido %}{{ pedido.nombre_cliente }}{% endif %}"
+                required
               >
-                  {{ e.descripcion }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
+              <datalist id="clientes">
+                {% for c in clientes %}
+                <option value="{{ c.NombreCompleto }}" data-id="{{ c.id_cliente }}">
+                {% endfor %}
+              </datalist>
+              <input type="hidden" name="id_cliente" id="id_cliente_hidden" value="{% if pedido %}{{ pedido.id_cliente }}{% endif %}">
+            </div>
 
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Tipo de pedido <span class="text-danger">*</span>
-            </label>
-            <select name="id_tipo_pedido" id="tipo_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
-              <option value="">Seleccione...</option>
-              {% for t in tipos %}
-              <option value="{{ t.id_tipo_pedido }}"
-                {% if pedido and pedido.id_tipo_pedido == t.id_tipo_pedido %}selected{% endif %}>
-                {{ t.descripcion }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-
- 
-<!-- MODIFICAR EL SELECT DEL MENÚ EN pedido_form.html -->
-<div class="col-md-4">
-    <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-      Menú <span class="text-danger">*</span>
-    </label>
-    <select name="id_menu" class="form-select form-select-lg rounded-3 shadow-sm" required>
-      <option value="">Seleccione...</option>
-      {% for m in menus %}
-      <option value="{{ m.idMenu }}" 
-              data-precio="{{ m.Precio }}"
-              data-restaurante="{{ m.idRestaurante }}"
-              {% if pedido and pedido.idMenu == m.idMenu %}selected
-              {% elif menu_id_seleccionado and menu_id_seleccionado|string == m.idMenu|string %}selected
-              {% endif %}>
-        {{ m.Descripcion }} - ${{ "%.2f"|format(m.Precio) }}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
-</div>
-
-
-        <!-- Sección 3: Restaurante y Costos -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Restaurante <span class="text-danger">*</span>
-            </label>
-            <select name="id_restaurante" class="form-select form-select-lg rounded-3 shadow-sm" required>
-              <option value="">Seleccione...</option>
-              {% for r in restaurantes %}
-              <option value="{{ r.idRestaurante }}"
-                {% if pedido and pedido.idRestaurante == r.idRestaurante %}selected{% endif %}>
-                {{ r.Nombre }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Costo de pedido <span class="text-danger">*</span>
-            </label>
-            <select name="id_costo_pedido" id="costo_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
-              <option value="">Seleccione...</option>
-              {% for c in costos_pedido %}
-              <option value="{{ c.id_costo_pedido }}" 
-                data-costo="{% if 'estándar' in c.descripcion|lower %}1.50{% elif 'premium' in c.descripcion|lower %}2.00{% elif 'empresarial' in c.descripcion|lower %}1.00{% elif 'combo' in c.descripcion|lower %}1.75{% elif 'especial' in c.descripcion|lower %}2.50{% else %}1.50{% endif %}"
-                {% if pedido and pedido.id_costo_pedido == c.id_costo_pedido %}selected{% endif %}>
-                {{ c.descripcion }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Costo de Entrega
-            </label>
-            <select name="id_costo_entrega" class="form-select form-select-lg rounded-3 shadow-sm">
-              <option value="">Seleccione...</option>
-              {% for ce in costos_entrega %}
-              <option value="{{ ce.id_costo_entrega }}"
-                {% if pedido and pedido.id_costo_entrega == ce.id_costo_entrega %}selected{% endif %}>
-                {{ ce.descripcion }}
-              </option>
-              {% endfor %}
-            </select>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Empleado que registra <span class="text-danger">*</span>
+              </label>
+              <select name="id_empleado" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                <option value="">Seleccione...</option>
+                {% for e in empleados %}
+                <option value="{{ e.id_empleado }}" {% if pedido and pedido.idEmpleado == e.id_empleado %}selected{% endif %}>
+                  {{ e.NombreCompleto }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
         </div>
 
-        <!-- Sección 4: Referencia, Método de pago y Repartidor -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Referencia (dirección)
-            </label>
-            <select name="id_referencia" class="form-select form-select-lg rounded-3 shadow-sm">
-              <option value="">(Opcional)</option>
-              {% for r in referencias %}
-              <option value="{{ r.idReferencia }}"
-                {% if pedido and pedido.idReferencia == r.idReferencia %}selected{% endif %}>
-                {{ r.descripcion }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
+        <!-- Bloque: Configuración del pedido -->
+        <div class="section-card mb-4">
+          <h5 class="section-title">Configuración del pedido</h5>
+          <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Estado del pedido <span class="text-danger">*</span>
+              </label>
+              {% if modo == 'nuevo' %}
+                {% set estado_pendiente = estados | selectattr('descripcion', 'equalto', 'Pendiente') | list | first %}
+                <input type="hidden" name="id_estado_pedido" value="{{ estado_pendiente.id_estado_pedido if estado_pendiente else '' }}">
+                <input type="text" class="form-control form-control-lg rounded-3 shadow-sm" value="Pendiente" readonly>
+              {% else %}
+                <select id="estado-select" name="id_estado_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                  {% for e in estados %}
+                  <option value="{{ e.id_estado_pedido }}"
+                          class="
+                              {% if e.descripcion == 'Pendiente' %}estado-pendiente
+                              {% elif e.descripcion == 'En preparación' %}estado-preparacion
+                              {% elif e.descripcion == 'En camino' %}estado-camino
+                              {% elif e.descripcion == 'Entregado' %}estado-entregado
+                              {% elif e.descripcion == 'Cancelado' %}estado-cancelado
+                              {% endif %}
+                          "
+                          {% if pedido and pedido.idEstado_pedido == e.id_estado_pedido %}selected{% endif %}>
+                    {{ e.descripcion }}
+                  </option>
+                  {% endfor %}
+                </select>
+              {% endif %}
+            </div>
 
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Método de pago <span class="text-danger">*</span>
-            </label>
-            <select name="id_metodo_pago" class="form-select form-select-lg rounded-3 shadow-sm" required>
-              <option value="">Seleccione...</option>
-              {% for m in metodos_pago %}
-              <option value="{{ m.idMetodo_de_pago }}"
-                {% if pedido and pedido.idMetodo_de_pago == m.idMetodo_de_pago %}selected{% endif %}>
-                {{ m.descripcion }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
+            <div class="col-lg-4 col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Tipo de pedido <span class="text-danger">*</span>
+              </label>
+              <select name="id_tipo_pedido" id="tipo_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                <option value="">Seleccione...</option>
+                {% for t in tipos %}
+                <option value="{{ t.id_tipo_pedido }}" {% if pedido and pedido.id_tipo_pedido == t.id_tipo_pedido %}selected{% endif %}>
+                  {{ t.descripcion }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
 
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Repartidor <span class="text-danger" id="repartidor_required">*</span>
-            </label>
-            <select name="id_repartidor" id="repartidor" class="form-select form-select-lg rounded-3 shadow-sm" required>
-              <option value="">Seleccione...</option>
-              {% for r in repartidores %}
-              <option value="{{ r.idRepartidor }}"
-                {% if pedido and pedido.idRepartidor == r.idRepartidor %}selected{% endif %}>
-                {{ r.NombreCompleto }}
-              </option>
-              {% endfor %}
-            </select>
+            {% if modo != 'nuevo' %}
+            <div class="col-lg-4 col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Menú <span class="text-danger">*</span>
+              </label>
+              <select name="id_menu" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                <option value="">Seleccione...</option>
+                {% for m in menus %}
+                <option value="{{ m.idMenu }}"
+                        data-precio="{{ m.Precio }}"
+                        data-restaurante="{{ m.idRestaurante }}"
+                        {% if pedido and pedido.idMenu == m.idMenu %}selected{% endif %}>
+                  {{ m.Descripcion }} - ${{ "%.2f"|format(m.Precio) }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
           </div>
         </div>
 
-        <!-- Sección 5: Fechas -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-6">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Fecha del pedido <span class="text-danger">*</span>
-            </label>
-            <input type="date" name="fecha_pedido" class="form-control form-control-lg rounded-3 shadow-sm"
-                   value="{% if pedido and pedido.Fecha_pedido %}{{ pedido.Fecha_pedido[:10] }}{% endif %}" required>
-          </div>
+        <!-- Bloque: Logística y entrega -->
+        <div class="section-card mb-4">
+          <h5 class="section-title">Logística y entrega</h5>
+          <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Costo de pedido <span class="text-danger">*</span>
+              </label>
+              <select name="id_costo_pedido" id="costo_pedido" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                <option value="">Seleccione...</option>
+                {% for c in costos_pedido %}
+                <option value="{{ c.id_costo_pedido }}"
+                        data-costo="{% if 'estándar' in c.descripcion|lower %}1.50{% elif 'premium' in c.descripcion|lower %}2.00{% elif 'empresarial' in c.descripcion|lower %}1.00{% elif 'combo' in c.descripcion|lower %}1.75{% elif 'especial' in c.descripcion|lower %}2.50{% else %}1.50{% endif %}"
+                        {% if pedido and pedido.id_costo_pedido == c.id_costo_pedido %}selected{% endif %}>
+                  {{ c.descripcion }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
 
-          <div class="col-md-6">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Fecha de entrega <span class="text-danger">*</span>
-            </label>
-            <input type="date" name="fecha_entrega" class="form-control form-control-lg rounded-3 shadow-sm"
-                   value="{% if pedido and pedido.Fecha_entrega %}{{ pedido.Fecha_entrega[:10] }}{% endif %}" required>
+            <div class="col-lg-4 col-md-6" data-field="costo_entrega">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Costo de entrega
+              </label>
+              <select name="id_costo_entrega" class="form-select form-select-lg rounded-3 shadow-sm">
+                <option value="">Seleccione...</option>
+                {% for ce in costos_entrega %}
+                <option value="{{ ce.id_costo_entrega }}" {% if pedido and pedido.id_costo_entrega == ce.id_costo_entrega %}selected{% endif %}>
+                  {{ ce.descripcion }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-lg-4 col-md-6" data-field="referencia">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Referencia (dirección)
+              </label>
+              <select name="id_referencia" class="form-select form-select-lg rounded-3 shadow-sm">
+                <option value="">(Opcional)</option>
+                {% for r in referencias %}
+                <option value="{{ r.idReferencia }}" {% if pedido and pedido.idReferencia == r.idReferencia %}selected{% endif %}>
+                  {{ r.descripcion }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-lg-4 col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Método de pago <span class="text-danger">*</span>
+              </label>
+              <select name="id_metodo_pago" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                <option value="">Seleccione...</option>
+                {% for m in metodos_pago %}
+                <option value="{{ m.idMetodo_de_pago }}" {% if pedido and pedido.idMetodo_de_pago == m.idMetodo_de_pago %}selected{% endif %}>
+                  {{ m.descripcion }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-lg-4 col-md-6" data-field="repartidor">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Repartidor <span class="text-danger" id="repartidor_required">*</span>
+              </label>
+              <select name="id_repartidor" id="repartidor" class="form-select form-select-lg rounded-3 shadow-sm" required>
+                <option value="">Seleccione...</option>
+                {% for r in repartidores %}
+                <option value="{{ r.idRepartidor }}" {% if pedido and pedido.idRepartidor == r.idRepartidor %}selected{% endif %}>
+                  {{ r.NombreCompleto }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
         </div>
 
-        <!-- Sección 6: Costos finales -->
-        <div class="row g-4 mb-4">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Total pedido (productos) <span class="text-danger">*</span>
-            </label>
-            <div class="input-group input-group-lg shadow-sm rounded-3">
-              <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
-              <input type="number" step="0.01" name="total_pedido" id="total_pedido" class="form-control border-0 rounded-end-3"
-                     value="{% if pedido and pedido.Total_pedido %}{{ pedido.Total_pedido }}{% endif %}" placeholder="0.00" required>
+        <!-- Bloque: Fechas -->
+        <div class="section-card mb-4">
+          <h5 class="section-title">Fechas</h5>
+          <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Fecha del pedido <span class="text-danger">*</span>
+              </label>
+              <input type="date" name="fecha_pedido" class="form-control form-control-lg rounded-3 shadow-sm" value="{% if pedido and pedido.Fecha_pedido %}{{ pedido.Fecha_pedido[:10] }}{% endif %}" required>
+            </div>
+
+            <div class="col-lg-4 col-md-6" data-field="fecha_entrega" {% if not fecha_entrega_value %}style="display: none;"{% endif %}>
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Fecha de entrega <span class="text-danger">*</span>
+              </label>
+              <input type="date" name="fecha_entrega" class="form-control form-control-lg rounded-3 shadow-sm" value="{{ fecha_entrega_value }}" required>
+            </div>
+
+            <div class="col-lg-4 col-md-6" data-field="hora_entrega" {% if not hora_entrega_value %}style="display: none;"{% endif %}>
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                  Hora de entrega <span class="text-danger">*</span>
+              </label>
+              <input type="time" name="hora_entrega" class="form-control form-control-lg rounded-3 shadow-sm" value="{{ hora_entrega_value }}" required>
             </div>
           </div>
+        </div>
 
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Costo servicio <span class="text-danger" id="costo_servicio_required">*</span>
-            </label>
-            <div class="input-group input-group-lg shadow-sm rounded-3">
-              <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
-              <input type="number" step="0.01" name="costo_servicio" id="costo_servicio" class="form-control border-0 rounded-end-3"
-                     value="{% if pedido and pedido.Costo_servicio %}{{ pedido.Costo_servicio }}{% endif %}" placeholder="0.00" required>
+        <!-- Bloque: Resumen económico -->
+        <div class="section-card mb-4">
+          <h5 class="section-title">Resumen económico</h5>
+          <div class="totales-stack">
+            <div class="totales-item">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Total pedido (productos) <span class="text-danger">*</span>
+              </label>
+              <div class="input-group input-group-lg shadow-sm rounded-3">
+                <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+                <input type="number" step="0.01" name="total_pedido" id="total_pedido" class="form-control border-0 rounded-end-3" value="{% if pedido and pedido.Total_pedido %}{{ pedido.Total_pedido }}{% endif %}" placeholder="0.00" required>
+              </div>
             </div>
-          </div>
 
-          <div class="col-md-4">
-            <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              Total a pagar <span class="text-danger">*</span>
-            </label>
-            <div class="input-group input-group-lg shadow-sm rounded-3">
-              <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
-              <input type="number" step="0.01" name="total_pagar" id="total_pagar" class="form-control border-0 rounded-end-3"
-                     value="{% if pedido and pedido.Total_pagar %}{{ pedido.Total_pagar }}{% endif %}" placeholder="0.00" required readonly>
+            <div class="totales-item">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Costo servicio <span class="text-danger" id="costo_servicio_required">*</span>
+              </label>
+              <div class="input-group input-group-lg shadow-sm rounded-3">
+                <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+                <input type="number" step="0.01" name="costo_servicio" id="costo_servicio" class="form-control border-0 rounded-end-3" value="{% if pedido and pedido.Costo_servicio %}{{ pedido.Costo_servicio }}{% endif %}" placeholder="0.00" required>
+              </div>
             </div>
-            <small class="text-muted">Se calcula automáticamente</small>
+
+            <div class="totales-item">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                IVA
+              </label>
+              <div class="input-group input-group-lg shadow-sm rounded-3">
+                <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+                <input type="number" step="0.01" name="iva_monto" id="iva_monto" class="form-control border-0 rounded-end-3" value="" placeholder="0.00" readonly>
+              </div>
+              <small class="text-muted">Se calcula automáticamente.</small>
+            </div>
+
+            <div class="totales-item">
+              <label class="form-label fw-semibold text-muted mb-2" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                Total a pagar <span class="text-danger">*</span>
+              </label>
+              <div class="input-group input-group-lg shadow-sm rounded-3">
+                <span class="input-group-text bg-light border-0 rounded-start-3">$</span>
+                <input type="number" step="0.01" name="total_pagar" id="total_pagar" class="form-control border-0 rounded-end-3" value="{% if pedido and pedido.Total_pagar %}{{ pedido.Total_pagar }}{% endif %}" placeholder="0.00" required readonly>
+              </div>
+              <small class="text-muted">Se calcula automáticamente (IVA: $<span id="iva_resumen">0.00</span>)</small>
+            </div>
           </div>
         </div>
 
@@ -285,10 +287,46 @@
             Cancelar
           </a>
         </div>
+      </div>
 
-      </form>
+      {% if modo == 'nuevo' or tiene_menus_seleccionados %}
+      <aside class="form-sidebar">
+        <div class="section-card mb-0">
+          <h5 class="section-title">Menús seleccionados</h5>
+          {% if tiene_menus_seleccionados %}
+          <div class="sidebar-list">
+            {% for menu in menus_seleccionados %}
+            <div class="sidebar-item">
+              <div class="sidebar-item-info">
+                <span class="sidebar-item-title">{{ menu.Descripcion }}</span>
+                <span class="sidebar-item-restaurant">
+                  {% if menu.Restaurante %}
+                    {% set nombre_restaurante = menu.Restaurante %}
+                    {% if nombre_restaurante.lower().startswith('restaurante ') %}
+                      {% set nombre_restaurante = nombre_restaurante[12:] %}
+                    {% endif %}
+                    Restaurante: {{ nombre_restaurante.strip() }}
+                  {% else %}
+                    Restaurante: Sin registro
+                  {% endif %}
+                </span>
+              </div>
+              <span class="sidebar-item-price">${{ menu.PrecioTexto }}</span>
+            </div>
+            <input type="hidden" name="selected_menu_ids" value="{{ menu.idMenu }}">
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="sidebar-empty">
+            <p class="sidebar-empty-text">Todavía no has seleccionado platos para este pedido.</p>
+            <a href="{{ url_for('menus_list') }}" class="select-menus-btn">Seleccionar platos</a>
+          </div>
+          {% endif %}
+        </div>
+      </aside>
+      {% endif %}
     </div>
-  </div>
+  </form>
 </div>
 
 <style>
@@ -326,6 +364,143 @@
   border: none;
 }
 
+.section-card {
+  background-color: #ffffff;
+  border: 1px solid #edf2f7;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 6px 20px rgba(13, 27, 62, 0.05);
+}
+
+.section-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #6c757d;
+  margin-bottom: 1rem;
+}
+
+.totales-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.totales-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-layout.with-sidebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.form-main {
+  min-width: 0;
+}
+
+.form-sidebar {
+  min-width: 0;
+}
+
+.sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.sidebar-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: stretch;
+  text-align: center;
+  padding: 0.75rem 0;
+}
+
+.sidebar-empty-text {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin: 0;
+}
+
+.select-menus-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #0d6efd;
+  color: #0d6efd;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.select-menus-btn:hover {
+  background-color: #0d6efd;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(13, 110, 253, 0.25);
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 0.75rem;
+}
+
+.sidebar-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-item-title {
+  display: block;
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 0.25rem;
+}
+
+.sidebar-item-restaurant {
+  display: block;
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.sidebar-item-price {
+  font-weight: 600;
+  color: #0d6efd;
+  white-space: nowrap;
+}
+
+.sidebar-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb {
+  background-color: rgba(13, 110, 253, 0.35);
+  border-radius: 999px;
+}
+
 .card {
   animation: fadeIn 0.5s ease;
 }
@@ -341,10 +516,23 @@
   }
 }
 
+@media (max-width: 992px) {
+  .form-layout.with-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .form-sidebar {
+    width: 100%;
+  }
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .col-md-4, .col-md-6 {
     margin-bottom: 1rem;
+  }
+  .section-card {
+    padding: 1.25rem;
   }
 }
 </style>
@@ -353,7 +541,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const menuSelect = document.querySelector('select[name="id_menu"]');
-  const restauranteSelect = document.querySelector('select[name="id_restaurante"]');
   const totalPedidoInput = document.getElementById('total_pedido');
   const costoPedidoSelect = document.getElementById('costo_pedido');
   const costoServicioInput = document.getElementById('costo_servicio');
@@ -361,17 +548,50 @@ document.addEventListener('DOMContentLoaded', function() {
   const totalPagarInput = document.getElementById('total_pagar');
   const tipoPedidoSelect = document.getElementById('tipo_pedido');
   const costoEntregaSelect = document.querySelector('select[name="id_costo_entrega"]');
+  const referenciaSelect = document.querySelector('select[name="id_referencia"]');
   const repartidorSelect = document.getElementById('repartidor');
   const repartidorRequired = document.getElementById('repartidor_required');
+  const costoEntregaContainer = document.querySelector('[data-field="costo_entrega"]');
+  const referenciaContainer = document.querySelector('[data-field="referencia"]');
+  const repartidorContainer = document.querySelector('[data-field="repartidor"]');
+  const fechaEntregaInput = document.querySelector('input[name="fecha_entrega"]');
+  const fechaEntregaContainer = document.querySelector('[data-field="fecha_entrega"]');
+  const horaEntregaInput = document.querySelector('input[name="hora_entrega"]');
+  const horaEntregaContainer = document.querySelector('[data-field="hora_entrega"]');
+  const ivaRateInput = document.getElementById('iva-rate');
+  const ivaRate = ivaRateInput ? parseFloat(ivaRateInput.value) : 0;
+  const ivaResumenBadge = document.getElementById('iva_resumen');
+  const ivaInput = document.getElementById('iva_monto');
+  const restauranteHiddenInput = document.getElementById('id_restaurante');
+  const selectedMenusData = {{ (menus_seleccionados or []) | tojson | safe }};
+
+  if (selectedMenusData.length > 0 && totalPedidoInput) {
+    const subtotal = selectedMenusData.reduce((acc, item) => acc + (parseFloat(item.Precio) || 0), 0);
+    totalPedidoInput.value = subtotal.toFixed(2);
+    totalPedidoInput.setAttribute('readonly', 'readonly');
+  } else if (totalPedidoInput) {
+    totalPedidoInput.removeAttribute('readonly');
+  }
+
+  if (selectedMenusData.length > 0 && restauranteHiddenInput && !restauranteHiddenInput.value) {
+    const primerMenu = selectedMenusData[0];
+    if (primerMenu && primerMenu.idRestaurante) {
+      restauranteHiddenInput.value = primerMenu.idRestaurante;
+    }
+  }
 
   // Función para calcular el total a pagar
   function calcularTotal() {
+    if (!totalPedidoInput || !costoServicioInput || !totalPagarInput) {
+      return;
+    }
     const totalPedido = parseFloat(totalPedidoInput.value) || 0;
     const costoServicio = parseFloat(costoServicioInput.value) || 0;
     
     let costoEntrega = 0;
     if (costoEntregaSelect && 
-        costoEntregaSelect.closest('.col-md-4').style.display !== 'none' && 
+      costoEntregaContainer &&
+      costoEntregaContainer.style.display !== 'none' && 
         costoEntregaSelect.selectedIndex > 0) {
       const textoEntrega = costoEntregaSelect.options[costoEntregaSelect.selectedIndex].text;
       const match = textoEntrega.match(/\$?\s*(\d+\.?\d*)/);
@@ -380,68 +600,146 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
     
-    const total = totalPedido + costoServicio + costoEntrega;
-    totalPagarInput.value = total.toFixed(2);
+    const base = totalPedido + costoServicio + costoEntrega;
+    const ivaCalculado = base * (isNaN(ivaRate) ? 0 : ivaRate);
+    totalPagarInput.value = (base + ivaCalculado).toFixed(2);
+    if (ivaResumenBadge) {
+      ivaResumenBadge.textContent = ivaCalculado.toFixed(2);
+    }
+    if (ivaInput) {
+      ivaInput.value = ivaCalculado.toFixed(2);
+    }
   }
 
   // Función para verificar campos según tipo de pedido
   function verificarCamposSegunTipo() {
-    if (!tipoPedidoSelect.value) return;
-    
+    if (!tipoPedidoSelect || !tipoPedidoSelect.value) {
+      if (fechaEntregaContainer && fechaEntregaInput) {
+        fechaEntregaContainer.style.display = 'none';
+        fechaEntregaInput.removeAttribute('required');
+        fechaEntregaInput.value = '';
+      }
+      if (horaEntregaContainer && horaEntregaInput) {
+        horaEntregaContainer.style.display = 'none';
+        horaEntregaInput.removeAttribute('required');
+        horaEntregaInput.value = '';
+      }
+      return;
+    }
+
     const tipoPedidoTexto = tipoPedidoSelect.options[tipoPedidoSelect.selectedIndex].text.toLowerCase();
-    const costoEntregaContainer = costoEntregaSelect.closest('.col-md-4');
-    const repartidorContainer = repartidorSelect ? repartidorSelect.closest('.col-md-4') : null;
-    
-    if (tipoPedidoTexto.includes('local')) {
+    const esSinEntrega = tipoPedidoTexto.includes('local') || tipoPedidoTexto.includes('llevar');
+    const esProgramado = tipoPedidoTexto.includes('programado');
+
+    if (fechaEntregaContainer && fechaEntregaInput) {
+      if (esProgramado) {
+        fechaEntregaContainer.style.display = 'block';
+        fechaEntregaInput.setAttribute('required', 'required');
+      } else {
+        fechaEntregaContainer.style.display = 'none';
+        fechaEntregaInput.removeAttribute('required');
+        fechaEntregaInput.value = '';
+      }
+    }
+
+    if (horaEntregaContainer && horaEntregaInput) {
+      if (esProgramado) {
+        horaEntregaContainer.style.display = 'block';
+        horaEntregaInput.setAttribute('required', 'required');
+      } else {
+        horaEntregaContainer.style.display = 'none';
+        horaEntregaInput.removeAttribute('required');
+        horaEntregaInput.value = '';
+      }
+    }
+
+    if (esSinEntrega) {
       if (costoEntregaContainer) {
         costoEntregaContainer.style.display = 'none';
-        costoEntregaSelect.removeAttribute('required');
-        costoEntregaSelect.value = '';
+        if (costoEntregaSelect) {
+          costoEntregaSelect.removeAttribute('required');
+          costoEntregaSelect.value = '';
+        }
+      }
+
+      if (referenciaContainer) {
+        referenciaContainer.style.display = 'none';
+        if (referenciaSelect) {
+          referenciaSelect.value = '';
+        }
       }
       
       if (repartidorContainer) {
         repartidorContainer.style.display = 'none';
-        repartidorSelect.removeAttribute('required');
-        repartidorRequired.style.display = 'none';
-        repartidorSelect.value = '';
+        if (repartidorSelect) {
+          repartidorSelect.removeAttribute('required');
+          repartidorSelect.value = '';
+        }
+        if (repartidorRequired) {
+          repartidorRequired.style.display = 'none';
+        }
       }
       
-      costoServicioInput.removeAttribute('required');
-      costoServicioRequired.style.display = 'none';
-      costoServicioInput.value = '0.00';
+      if (costoServicioInput) {
+        costoServicioInput.removeAttribute('required');
+        costoServicioInput.value = '0.00';
+        costoServicioInput.setAttribute('readonly', 'readonly');
+      }
+      if (costoServicioRequired) {
+        costoServicioRequired.style.display = 'none';
+      }
       
     } else {
       if (costoEntregaContainer) {
         costoEntregaContainer.style.display = 'block';
-        costoEntregaSelect.setAttribute('required', 'required');
+        if (costoEntregaSelect) {
+          costoEntregaSelect.setAttribute('required', 'required');
+        }
+      }
+
+      if (referenciaContainer) {
+        referenciaContainer.style.display = 'block';
       }
       
       if (repartidorContainer) {
         repartidorContainer.style.display = 'block';
-        repartidorSelect.setAttribute('required', 'required');
-        repartidorRequired.style.display = 'inline';
+        if (repartidorSelect) {
+          repartidorSelect.setAttribute('required', 'required');
+        }
+        if (repartidorRequired) {
+          repartidorRequired.style.display = 'inline';
+        }
       }
       
-      costoServicioInput.setAttribute('required', 'required');
-      costoServicioRequired.style.display = 'inline';
+      if (costoServicioInput) {
+        costoServicioInput.setAttribute('required', 'required');
+        costoServicioInput.removeAttribute('readonly');
+      }
+      if (costoServicioRequired) {
+        costoServicioRequired.style.display = 'inline';
+      }
       
-      if (!costoEntregaSelect.value || costoEntregaSelect.value === "") {
+      if (costoEntregaSelect && (!costoEntregaSelect.value || costoEntregaSelect.value === "")) {
         for (let i = 1; i < costoEntregaSelect.options.length; i++) {
           costoEntregaSelect.selectedIndex = i;
           break;
         }
       }
       
-      const descripcionEntrega = costoEntregaSelect.options[costoEntregaSelect.selectedIndex].text;
-      const match = descripcionEntrega.match(/\$?\s*(\d+\.?\d*)/);
-      if (match) {
-        const precioEntrega = parseFloat(match[1]);
-        if (precioEntrega > 0) {
-          costoServicioInput.value = precioEntrega.toFixed(2);
-          costoServicioInput.style.backgroundColor = '#d4edda';
-          setTimeout(() => {
-            costoServicioInput.style.backgroundColor = '';
-          }, 500);
+      if (costoEntregaSelect && !esSinEntrega && costoEntregaSelect.selectedIndex > 0) {
+        const descripcionEntrega = costoEntregaSelect.options[costoEntregaSelect.selectedIndex].text;
+        const match = descripcionEntrega.match(/\$?\s*(\d+\.?\d*)/);
+        if (match) {
+          const precioEntrega = parseFloat(match[1]);
+          if (precioEntrega > 0) {
+            if (costoServicioInput) {
+              costoServicioInput.value = precioEntrega.toFixed(2);
+              costoServicioInput.style.backgroundColor = '#d4edda';
+              setTimeout(() => {
+                costoServicioInput.style.backgroundColor = '';
+              }, 500);
+            }
+          }
         }
       }
     }
@@ -454,23 +752,18 @@ document.addEventListener('DOMContentLoaded', function() {
     menuSelect.addEventListener('change', function() {
       const selectedOption = this.options[this.selectedIndex];
       const precio = selectedOption.getAttribute('data-precio');
-      const idRestaurante = selectedOption.getAttribute('data-restaurante');
+      const restaurante = selectedOption.getAttribute('data-restaurante');
+
+      if (restauranteHiddenInput) {
+        restauranteHiddenInput.value = restaurante || '';
+      }
       
       // 1️⃣ Autocompletar PRECIO
-      if (precio) {
+      if (precio && totalPedidoInput) {
         totalPedidoInput.value = parseFloat(precio).toFixed(2);
         totalPedidoInput.style.backgroundColor = '#d4edda';
         setTimeout(() => {
           totalPedidoInput.style.backgroundColor = '';
-        }, 500);
-      }
-      
-      // 2️⃣ Autocompletar RESTAURANTE
-      if (idRestaurante && restauranteSelect) {
-        restauranteSelect.value = idRestaurante;
-        restauranteSelect.style.backgroundColor = '#fff3cd';
-        setTimeout(() => {
-          restauranteSelect.style.backgroundColor = '';
         }, 500);
       }
       
@@ -481,13 +774,17 @@ document.addEventListener('DOMContentLoaded', function() {
   // Cuando se cambia el costo de entrega
   if (costoEntregaSelect) {
     costoEntregaSelect.addEventListener('change', function() {
+      if (!tipoPedidoSelect || tipoPedidoSelect.selectedIndex < 0) {
+        return;
+      }
       const tipoPedidoTexto = tipoPedidoSelect.options[tipoPedidoSelect.selectedIndex].text.toLowerCase();
-      
-      if (!tipoPedidoTexto.includes('local')) {
+      const esSinEntrega = tipoPedidoTexto.includes('local') || tipoPedidoTexto.includes('llevar');
+
+      if (!esSinEntrega) {
         const descripcionEntrega = this.options[this.selectedIndex].text;
         const match = descripcionEntrega.match(/\$?\s*(\d+\.?\d*)/);
         
-        if (match) {
+        if (match && costoServicioInput) {
           const precioEntrega = parseFloat(match[1]);
           costoServicioInput.value = precioEntrega.toFixed(2);
           costoServicioInput.style.backgroundColor = '#d4edda';
@@ -501,9 +798,15 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Event listeners
-  totalPedidoInput.addEventListener('input', calcularTotal);
-  costoServicioInput.addEventListener('input', calcularTotal);
-  tipoPedidoSelect.addEventListener('change', verificarCamposSegunTipo);
+  if (totalPedidoInput) {
+    totalPedidoInput.addEventListener('input', calcularTotal);
+  }
+  if (costoServicioInput) {
+    costoServicioInput.addEventListener('input', calcularTotal);
+  }
+  if (tipoPedidoSelect) {
+    tipoPedidoSelect.addEventListener('change', verificarCamposSegunTipo);
+  }
 
   // Actualizar color del estado
   function actualizarColorEstado() {
@@ -531,16 +834,23 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Autocompletar cliente
-  document.querySelector('input[name="nombre_cliente"]').addEventListener('input', function(e) {
-    let valor = e.target.value;
-    let opciones = document.querySelectorAll('#clientes option');
-    
-    opciones.forEach(function(option) {
-      if (option.value === valor) {
-        document.getElementById('id_cliente_hidden').value = option.getAttribute('data-id');
-      }
+  const nombreClienteInput = document.querySelector('input[name="nombre_cliente"]');
+  if (nombreClienteInput) {
+    nombreClienteInput.addEventListener('input', function(e) {
+      const valor = e.target.value;
+      const opciones = document.querySelectorAll('#clientes option');
+      
+      opciones.forEach(function(option) {
+        if (option.value === valor) {
+          const id = option.getAttribute('data-id');
+          const hidden = document.getElementById('id_cliente_hidden');
+          if (hidden) {
+            hidden.value = id;
+          }
+        }
+      });
     });
-  });
+  }
 
   // ✅ INICIALIZAR AL CARGAR
   calcularTotal();

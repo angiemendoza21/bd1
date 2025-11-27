@@ -1,4 +1,5 @@
 import pyodbc
+from decimal import Decimal, ROUND_HALF_UP
 from flask import Flask, render_template, request, redirect, url_for, flash
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
@@ -9,18 +10,22 @@ from flask import send_file
 
 app = Flask(__name__)
 app.secret_key = "cambia_esta_clave"
+IVA_RATE = Decimal("0.12")
 
 # -------------------------------------------------------------------
 #  CONEXIÓN A SQL SERVER (BD1)
 # -------------------------------------------------------------------
-def get_connection():                                               # encapsular la conexión, reutilizable,interactuar con la BD
+def get_connection():
     conn = pyodbc.connect(
-        'DRIVER={SQL Server};'
-        'SERVER=LAPTOP-DAYANNA\\SQLEXPRESS;' 
+        'DRIVER={ODBC Driver 18 for SQL Server};'
+        'SERVER=JOEL2004\\SQLEXPRESS;'
         'DATABASE=BD1;'
-        'Trusted_Connection=yes;'                                    # autenticación de Windows
+        'Trusted_Connection=yes;'
+        'TrustServerCertificate=yes;'
     )
     return conn
+
+
 
 def rows_to_dicts(cursor):
     """Convierte resultados de pyodbc a lista de diccionarios."""
@@ -192,14 +197,43 @@ def cargar_tablas_maestras():
 # -------------------------------------------------------------------
 @app.route("/pedidos/nuevo", methods=["GET", "POST"])
 def pedido_nuevo():
+    selected_menu_ids = []
+    seen_menu_ids = set()
 
-    # ← Capturar menú seleccionado desde la URL
-    menu_id = request.args.get("menu_id")
+    def _append_from_raw(raw_value):
+        if raw_value is None:
+            return
+        for piece in str(raw_value).split(','):
+            piece = piece.strip()
+            if piece.isdigit():
+                value = int(piece)
+                if value not in seen_menu_ids:
+                    selected_menu_ids.append(value)
+                    seen_menu_ids.add(value)
+
+    if request.args:
+        for value in request.args.getlist("menu_id"):
+            _append_from_raw(value)
+        _append_from_raw(request.args.get("menu_id"))
+        _append_from_raw(request.args.get("menu_ids"))
 
     if request.method == "POST":
         conn = get_connection()
         cur = conn.cursor()
         pedido = None
+
+        selected_menu_ids_form = []
+        for raw_menu_id in request.form.getlist("selected_menu_ids"):
+            raw_menu_id = raw_menu_id.strip()
+            if raw_menu_id.isdigit():
+                selected_menu_ids_form.append(int(raw_menu_id))
+
+        id_menu_form_value = request.form.get("id_menu")
+
+        if not selected_menu_ids_form and not id_menu_form_value:
+            conn.close()
+            flash("Selecciona al menos un menú antes de guardar el pedido.", "danger")
+            return redirect(url_for("pedido_nuevo"))
 
         # ============ MANEJAR CLIENTE (NUEVO O EXISTENTE) ============
         nombre_cliente = request.form.get("nombre_cliente")
@@ -236,17 +270,50 @@ def pedido_nuevo():
         id_estado_pedido   = int(request.form["id_estado_pedido"])
         id_costo_pedido    = int(request.form["id_costo_pedido"])
         id_tipo_pedido     = int(request.form["id_tipo_pedido"])
-        id_menu            = int(request.form["id_menu"])
-        id_restaurante     = int(request.form["id_restaurante"])
+
+        if selected_menu_ids_form:
+            id_menu = selected_menu_ids_form[0]
+        else:
+            id_menu = int(id_menu_form_value)
+
+        id_restaurante_raw = request.form.get("id_restaurante")
+        if id_restaurante_raw:
+            id_restaurante = int(id_restaurante_raw)
+        elif selected_menu_ids_form:
+            cur.execute(
+                "SELECT TOP 1 idRestaurante FROM SDR_M_Menu WHERE idMenu = ?",
+                (selected_menu_ids_form[0],)
+            )
+            fetched = cur.fetchone()
+            id_restaurante = fetched[0] if fetched else None
+        else:
+            id_restaurante = None
+
+        if id_restaurante is None:
+            conn.rollback()
+            conn.close()
+            flash("No se pudo determinar el restaurante principal del pedido. Selecciona nuevamente los menús.", "danger")
+            if selected_menu_ids_form:
+                menu_ids_query = ",".join(str(mid) for mid in selected_menu_ids_form)
+                return redirect(url_for("pedido_nuevo", menu_ids=menu_ids_query))
+            return redirect(url_for("pedido_nuevo"))
+
         id_referencia      = int(request.form["id_referencia"]) if request.form.get("id_referencia") else None
         id_metodo_pago     = int(request.form["id_metodo_pago"])
         id_costo_entrega   = int(request.form["id_costo_entrega"]) if request.form.get("id_costo_entrega") else None
         id_repartidor      = int(request.form["id_repartidor"]) if request.form.get("id_repartidor") else None
-        fecha_pedido       = request.form["fecha_pedido"]
-        fecha_entrega      = request.form["fecha_entrega"]
+        fecha_pedido       = request.form.get("fecha_pedido")
+        fecha_entrega_raw  = (request.form.get("fecha_entrega") or "").strip()
+        hora_entrega_raw   = (request.form.get("hora_entrega") or "").strip()
+        fecha_entrega      = fecha_entrega_raw if fecha_entrega_raw else None
+        if fecha_entrega and hora_entrega_raw:
+            fecha_entrega = f"{fecha_entrega} {hora_entrega_raw}"
         total_pedido       = float(request.form["total_pedido"])
         costo_servicio     = float(request.form["costo_servicio"]) if request.form.get("costo_servicio") else 0.0
-        total_pagar        = float(request.form["total_pagar"])
+
+        base_total = Decimal(str(total_pedido)) + Decimal(str(costo_servicio))
+        total_pagar_decimal = (base_total * (Decimal("1") + IVA_RATE)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total_pagar = float(total_pagar_decimal)
 
         sql = """
         INSERT INTO SDR_T_Pedido
@@ -267,6 +334,41 @@ def pedido_nuevo():
         )
 
         cur.execute(sql, params)
+
+        detalle_menu_ids = selected_menu_ids_form if selected_menu_ids_form else [id_menu]
+        if detalle_menu_ids:
+            cur.execute("SELECT ISNULL(MAX(id_descripcion_pedido), 0) FROM SDR_T_Descripcion_Pedido")
+            max_detalle_id = cur.fetchone()[0] or 0
+            siguiente_detalle_id = max_detalle_id + 1
+
+            for menu_detalle_id in detalle_menu_ids:
+                cur.execute(
+                    """
+                    SELECT M.Descripcion, ISNULL(R.Nombre, '') AS Restaurante
+                    FROM SDR_M_Menu M
+                    LEFT JOIN SDR_M_Restaurante R ON M.idRestaurante = R.idRestaurante
+                    WHERE M.idMenu = ?
+                    """,
+                    (menu_detalle_id,)
+                )
+                menu_detalle = cur.fetchone()
+                if menu_detalle:
+                    descripcion_menu, restaurante_menu = menu_detalle
+                    descripcion_detalle = descripcion_menu
+                    if restaurante_menu:
+                        descripcion_detalle = f"{descripcion_menu} - {restaurante_menu}"
+                else:
+                    descripcion_detalle = "Menú sin detalle"
+
+                cur.execute(
+                    """
+                    INSERT INTO SDR_T_Descripcion_Pedido (id_descripcion_pedido, id_pedido, id_menu, Descripcion)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (siguiente_detalle_id, nuevo_id, menu_detalle_id, descripcion_detalle)
+                )
+                siguiente_detalle_id += 1
+
         conn.commit()
         conn.close()
         flash(f"Pedido {nuevo_id} creado correctamente", "success")
@@ -274,14 +376,50 @@ def pedido_nuevo():
 
     # === GET ===
     maestras = cargar_tablas_maestras()
+    restaurantes_map = {r["idRestaurante"]: r["Nombre"] for r in maestras["restaurantes"]}
+    menus_seleccionados = []
+    subtotal_preseleccionado = Decimal("0")
+    restaurantes_seleccionados = []
+    restaurantes_vistos = set()
 
-    maestras = cargar_tablas_maestras()
+    if selected_menu_ids:
+        for menu_id in selected_menu_ids:
+            menu = next((m for m in maestras["menus"] if m["idMenu"] == menu_id), None)
+            if not menu:
+                continue
+            precio_decimal = Decimal(str(menu.get("Precio", 0)))
+            subtotal_preseleccionado += precio_decimal
+            nombre_restaurante = restaurantes_map.get(menu.get("idRestaurante"))
+            if menu.get("idRestaurante") and menu["idRestaurante"] not in restaurantes_vistos:
+                restaurantes_seleccionados.append({
+                    "idRestaurante": menu["idRestaurante"],
+                    "Nombre": nombre_restaurante
+                })
+                restaurantes_vistos.add(menu["idRestaurante"])
+
+            menus_seleccionados.append({
+                "idMenu": menu["idMenu"],
+                "Descripcion": menu.get("Descripcion"),
+                "Precio": float(precio_decimal),
+                "PrecioTexto": f"{precio_decimal:.2f}",
+                "idRestaurante": menu.get("idRestaurante"),
+                "Restaurante": nombre_restaurante
+            })
+
+    menu_id = selected_menu_ids[0] if selected_menu_ids else None
 
     return render_template(
         "pedido_form.html",
         modo="nuevo",
         pedido=None,
-        menu_id_seleccionado=menu_id,  # ← AGREGAR ESTA LÍNEA
+        menu_id_seleccionado=menu_id,
+        menus_seleccionados=menus_seleccionados,
+        restaurantes_seleccionados=restaurantes_seleccionados,
+        subtotal_preseleccionado=float(subtotal_preseleccionado),
+        iva_rate=float(IVA_RATE),
+        tiene_menus_seleccionados=bool(menus_seleccionados),
+        fecha_entrega_value="",
+        hora_entrega_value="",
         **maestras
     )
 
@@ -334,11 +472,18 @@ def pedido_editar(id_pedido):
         id_costo_entrega   = int(request.form["id_costo_entrega"]) if request.form.get("id_costo_entrega") else None
         id_repartidor      = int(request.form["id_repartidor"]) if request.form.get("id_repartidor") else None
         
-        fecha_pedido       = request.form["fecha_pedido"]
-        fecha_entrega      = request.form["fecha_entrega"]
+        fecha_pedido       = request.form.get("fecha_pedido")
+        fecha_entrega_raw  = (request.form.get("fecha_entrega") or "").strip()
+        hora_entrega_raw   = (request.form.get("hora_entrega") or "").strip()
+        fecha_entrega      = fecha_entrega_raw if fecha_entrega_raw else None
+        if fecha_entrega and hora_entrega_raw:
+            fecha_entrega = f"{fecha_entrega} {hora_entrega_raw}"
         total_pedido       = float(request.form["total_pedido"])
         costo_servicio     = float(request.form["costo_servicio"]) if request.form.get("costo_servicio") else 0.0
-        total_pagar        = float(request.form["total_pagar"])
+
+        base_total = Decimal(str(total_pedido)) + Decimal(str(costo_servicio))
+        total_pagar_decimal = (base_total * (Decimal("1") + IVA_RATE)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total_pagar        = float(total_pagar_decimal)
 
         sql = """
         UPDATE SDR_T_Pedido
@@ -392,8 +537,39 @@ def pedido_editar(id_pedido):
     pedido = dict(zip(cols, row))
     conn.close()
 
+    fecha_entrega_value = ""
+    hora_entrega_value = ""
+    fecha_entrega_raw = pedido.get("Fecha_entrega")
+    if fecha_entrega_raw:
+        if hasattr(fecha_entrega_raw, "strftime"):
+            fecha_entrega_value = fecha_entrega_raw.strftime("%Y-%m-%d")
+            hora_entrega_value = fecha_entrega_raw.strftime("%H:%M")
+        elif isinstance(fecha_entrega_raw, str):
+            fecha_part = fecha_entrega_raw.strip()
+            time_part = ""
+            if "T" in fecha_part:
+                fecha_part, time_part = fecha_part.split("T", 1)
+            elif " " in fecha_part:
+                fecha_part, time_part = fecha_part.split(" ", 1)
+            if fecha_part:
+                fecha_entrega_value = fecha_part
+            if time_part:
+                hora_entrega_value = time_part[:5]
+
     maestras = cargar_tablas_maestras()
-    return render_template("pedido_form.html", modo="editar", pedido=pedido, **maestras)
+    return render_template(
+        "pedido_form.html",
+        modo="editar",
+        pedido=pedido,
+        menus_seleccionados=None,
+        restaurantes_seleccionados=None,
+        subtotal_preseleccionado=0.0,
+        iva_rate=float(IVA_RATE),
+        tiene_menus_seleccionados=False,
+        fecha_entrega_value=fecha_entrega_value,
+        hora_entrega_value=hora_entrega_value,
+        **maestras
+    )
 # -------------------------------------------------------------------
 #  ELIMINAR PEDIDO (DELETE)
 # -------------------------------------------------------------------
@@ -423,27 +599,89 @@ def factura_pdf(id_pedido):
         P.id_pedido,
         C.Nombre + ' ' + C.Apellido AS Cliente,
         C.Telefono,
-        M.Descripcion AS Producto,
         P.Total_pedido,
         P.Costo_servicio,
         P.Total_pagar,
         P.Fecha_pedido
     FROM SDR_T_Pedido P
     JOIN SDR_M_Cliente C ON P.id_cliente = C.id_cliente
-    JOIN SDR_M_Menu M ON P.idMenu = M.idMenu
     WHERE P.id_pedido = ?
     """, (id_pedido,))
 
     row = cur.fetchone()
-    
+
     if not row:
         conn.close()
         flash("Pedido no encontrado", "danger")
         return redirect(url_for("pedidos_list"))
-    
+
     cols = [c[0] for c in cur.description]
-    f = dict(zip(cols, row))
+    pedido_data = dict(zip(cols, row))
+
+    cur.execute(
+        """
+        SELECT 
+            D.id_descripcion_pedido,
+            ISNULL(M.Descripcion, D.Descripcion) AS MenuDescripcion,
+            M.Precio,
+            R.Nombre AS Restaurante
+        FROM SDR_T_Descripcion_Pedido D
+        LEFT JOIN SDR_M_Menu M ON D.id_menu = M.idMenu
+        LEFT JOIN SDR_M_Restaurante R ON M.idRestaurante = R.idRestaurante
+        WHERE D.id_pedido = ?
+        ORDER BY D.id_descripcion_pedido
+        """,
+        (id_pedido,)
+    )
+    detalles = rows_to_dicts(cur)
+
+    if not detalles:
+        cur.execute(
+            """
+            SELECT 
+                M.Descripcion AS MenuDescripcion,
+                M.Precio,
+                R.Nombre AS Restaurante
+            FROM SDR_T_Pedido P
+            LEFT JOIN SDR_M_Menu M ON P.idMenu = M.idMenu
+            LEFT JOIN SDR_M_Restaurante R ON M.idRestaurante = R.idRestaurante
+            WHERE P.id_pedido = ?
+            """,
+            (id_pedido,)
+        )
+        detalles = rows_to_dicts(cur)
+
     conn.close()
+
+    items = []
+    subtotal_items = Decimal("0")
+    for detalle in detalles:
+        descripcion_menu = detalle.get("MenuDescripcion") or "Producto"
+        restaurante = detalle.get("Restaurante") or "Sin restaurante"
+        precio = detalle.get("Precio")
+        try:
+            precio_decimal = Decimal(str(precio)) if precio is not None else Decimal("0")
+        except Exception:
+            precio_decimal = Decimal("0")
+        subtotal_items += precio_decimal
+        items.append({
+            "descripcion": descripcion_menu,
+            "restaurante": restaurante,
+            "precio": precio_decimal
+        })
+
+    subtotal_registrado = Decimal(str(pedido_data.get("Total_pedido") or 0))
+    if subtotal_items == 0 and subtotal_registrado:
+        subtotal_items = Decimal(str(subtotal_registrado))
+
+    costo_servicio = Decimal(str(pedido_data.get("Costo_servicio") or 0))
+    total_pagar = Decimal(str(pedido_data.get("Total_pagar") or 0))
+    base_sin_iva = subtotal_items + costo_servicio
+    iva_decimal = (total_pagar - base_sin_iva) if total_pagar > base_sin_iva else Decimal("0")
+    iva_decimal = iva_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    subtotal_items = subtotal_items.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    costo_servicio = costo_servicio.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total_pagar = total_pagar.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     # ------------ CREAR PDF -----------------
     buffer = BytesIO()
@@ -473,9 +711,12 @@ def factura_pdf(id_pedido):
     pdf.setFont("Helvetica-Bold", 12)
     pdf.drawString(40, 710, "DATOS DEL CLIENTE")
     pdf.setFont("Helvetica", 11)
-    pdf.drawString(40, 690, f"{f['Cliente']}")
-    pdf.drawString(40, 675, f"Dirección: {f.get('Direccion', 'No registrada')}")
-    pdf.drawString(40, 660, f"Teléfono: {f.get('Telefono', 'Sin teléfono')}")
+    pdf.drawString(40, 690, f"{pedido_data['Cliente']}")
+    direccion_cliente = pedido_data.get('Direccion') if 'Direccion' in pedido_data else None
+    if not direccion_cliente:
+        direccion_cliente = 'No registrada'
+    pdf.drawString(40, 675, f"Dirección: {direccion_cliente}")
+    pdf.drawString(40, 660, f"Teléfono: {pedido_data.get('Telefono', 'Sin teléfono')}")
 
     # ----------- EMPRESA EMISORA ------------
     pdf.setFont("Helvetica-Bold", 12)
@@ -487,7 +728,7 @@ def factura_pdf(id_pedido):
     pdf.drawString(350, 645, "Tel: 0999999999")
 
     # ----------- NÚMERO Y FECHA -------------
-    fecha_str = f['Fecha_pedido']
+    fecha_str = pedido_data['Fecha_pedido']
     if hasattr(fecha_str, 'strftime'):
         fecha_str = fecha_str.strftime('%d/%m/%Y')
     elif isinstance(fecha_str, str) and '-' in fecha_str:
@@ -496,7 +737,7 @@ def factura_pdf(id_pedido):
             fecha_str = f"{partes[2]}/{partes[1]}/{partes[0]}"
     
     pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(40, 630, f"N° FACTURA: GP-{f['id_pedido']}")
+    pdf.drawString(40, 630, f"N° FACTURA: GP-{pedido_data['id_pedido']}")
     pdf.drawString(40, 615, f"FECHA: {fecha_str}")
 
     # ----------- TABLA DE PRODUCTOS ---------
@@ -510,31 +751,47 @@ def factura_pdf(id_pedido):
 
     pdf.setFont("Helvetica", 11)
     y = 560
-    cantidad = 1
-    
-    # 🔥 USAR LOS VALORES REALES DE LA BASE DE DATOS
-    subtotal = float(f['Total_pedido']) if f['Total_pedido'] else 0.0
-    costo_servicio = float(f['Costo_servicio']) if f['Costo_servicio'] else 0.0
-    total_pagar = float(f['Total_pagar']) if f['Total_pagar'] else 0.0
+    linea_altura = 32
 
-    pdf.drawString(40, y, str(cantidad))
-    pdf.drawString(140, y, f["Producto"])
-    pdf.drawString(330, y, f"${subtotal:.2f}")
-    pdf.drawString(450, y, f"${subtotal:.2f}")
+    if not items:
+        items.append({
+            "descripcion": "Productos del pedido",
+            "restaurante": "",
+            "precio": subtotal_items
+        })
+
+    pdf.setFont("Helvetica", 11)
+    for item in items:
+        pdf.setFont("Helvetica", 11)
+        pdf.drawString(40, y, "1")
+        descripcion_linea = item["descripcion"]
+        pdf.drawString(140, y, descripcion_linea)
+        if item["restaurante"]:
+            pdf.setFont("Helvetica-Oblique", 9)
+            pdf.drawString(140, y - 12, f"Restaurante: {item['restaurante']}")
+            pdf.setFont("Helvetica", 11)
+        precio_float = float(item["precio"])
+        pdf.drawString(330, y, f"${precio_float:.2f}")
+        pdf.drawString(450, y, f"${precio_float:.2f}")
+        y -= linea_altura
 
     # ----------- RESUMEN DE PAGO ------------
-    y -= 60
+    y -= 20
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawString(330, y, "Subtotal:")
-    pdf.drawString(450, y, f"${subtotal:.2f}")
+    pdf.drawString(450, y, f"${float(subtotal_items):.2f}")
 
     y -= 20
     pdf.drawString(330, y, "Servicio:")
-    pdf.drawString(450, y, f"${costo_servicio:.2f}")
+    pdf.drawString(450, y, f"${float(costo_servicio):.2f}")
+
+    y -= 20
+    pdf.drawString(330, y, "IVA:")
+    pdf.drawString(450, y, f"${float(iva_decimal):.2f}")
 
     y -= 20
     pdf.drawString(330, y, "TOTAL:")
-    pdf.drawString(450, y, f"${total_pagar:.2f}")
+    pdf.drawString(450, y, f"${float(total_pagar):.2f}")
 
     # ----------- PIE DE PÁGINA --------------
     pdf.setFont("Helvetica", 10)
@@ -548,7 +805,7 @@ def factura_pdf(id_pedido):
         buffer,
         as_attachment=True,
         mimetype="application/pdf",
-        download_name=f"Factura_{f['id_pedido']}.pdf"
+        download_name=f"Factura_{pedido_data['id_pedido']}.pdf"
     )
 
 
@@ -651,9 +908,11 @@ def menus_list():
             M.idMenu,
             M.Descripcion,
             M.idRestaurante,
+            ISNULL(R.Nombre, '') AS NombreRestaurante,
             M.Imagen,
             M.Precio
         FROM SDR_M_Menu M
+        LEFT JOIN SDR_M_Restaurante R ON M.idRestaurante = R.idRestaurante
         ORDER BY M.idMenu
     """)
 
